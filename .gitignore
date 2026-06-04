@@ -8,5 +8,4 @@ reachly_server.db
 *.db
 smoke_*.txt
 DEPLOY_SESSION.md
-sessions/
 li_debug.png

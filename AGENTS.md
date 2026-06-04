@@ -116,8 +116,9 @@ Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_M
 | Context repo | `/var/www/html/dev-env/hdb_backend` |
 | Post times (LinkedIn) | 09:00, 13:30, 21:00 Asia/Kolkata |
 | Instagram offset | 5 min → 09:05, 13:35, 21:05 |
-| LinkedIn | browser mode, personal profile (company page TBD) |
+| LinkedIn | browser mode, `LINKEDIN_POST_AS="HyGaar"` configured for company page; verify after UI changes |
 | Instagram | browser mode, `@hygaar.studios` — image from Gemini prompt |
+| X / Twitter | browser mode configured for `@hygaarstudios`; server login currently limited by X checkpoint |
 | Image gen | Gemini (`ATTACH_IMAGE=yes`; images generated at Instagram slot) |
 | Posting style | `brand_promoter` |
 
@@ -147,6 +148,9 @@ Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_M
 | `reachly/dashboard/app.py` | Hygaar dashboard |
 | `deploy/install_on_server.sh` | Server bootstrap |
 | `deploy/nginx/reach.hygaar.com.conf` | Public dashboard proxy |
+| `business_goals.md` | Business strategy source of truth for Reachly itself |
+| `PROMPTS/` | Reusable session/start/end/deploy prompts |
+| `sessions/` | Session handoffs and operational history |
 
 ---
 

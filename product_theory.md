@@ -150,10 +150,10 @@ Do not put posting logic in the dashboard — dashboard triggers Agent only.
 
 | Item | Status |
 |---|---|
-| LinkedIn company page posting (browser) | UI switcher unreliable — deferred |
+| LinkedIn company page posting (browser) | `LINKEDIN_POST_AS="HyGaar"` configured; verify after every UI change |
 | Instagram live posting | **Enabled** (browser mode); session must be primed once; selectors updated for `/create/select/` |
 | Staggered LinkedIn → Instagram (3× daily) | **Live** — 6 scheduler jobs on server |
-| X / Twitter | Off (API cost / setup) |
+| X / Twitter | Browser mode implemented; blocked by X temporary login limits/checkpoint until session is primed |
 | Read Reachly's own AGENTS.md in context | Available at `/opt/reachly/` |
 | nginx public URL `reach.hygaar.com` | Config added; DNS/ALB route may be needed |
 | Automated tests | Minimal — manual `preview` / `once` / `instagram` on server |
@@ -164,6 +164,7 @@ Do not put posting logic in the dashboard — dashboard triggers Agent only.
 
 - 3 posts/day on LinkedIn without manual writing
 - 3 posts/day on Instagram (image + caption), 5 min after each LinkedIn slot
+- X posts automatically once the server browser session is successfully primed
 - Posts reflect current product positioning (from docs)
 - < 5 min human time per week (goals update + occasional approve)
 - Session survives ≥30 days without re-login (target)
