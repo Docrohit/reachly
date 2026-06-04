@@ -168,8 +168,15 @@ class TwitterBrowserPoster(Poster):
             return False
         page.goto("https://x.com/i/flow/login", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
-        user = page.locator("input[name='text']").first
-        user.wait_for(timeout=15000)
+        if page.locator("input[name='username_or_email']").count():
+            page.locator("input[name='username_or_email']").first.fill(self.creds.username)
+            pw = page.locator("input[name='password']").first
+            pw.fill(self.creds.password)
+            pw.press("Enter")
+            page.wait_for_timeout(4000)
+            return self._logged_in(page)
+
+        user = self._username_input(page)
         user.fill(self.creds.username)
         self._click_next(page)
         page.wait_for_timeout(2000)
@@ -189,9 +196,40 @@ class TwitterBrowserPoster(Poster):
         pw = page.locator("input[name='password']").first
         pw.wait_for(timeout=15000)
         pw.fill(self.creds.password)
-        page.get_by_role("button", name="Log in").click()
+        self._submit_login(page)
         page.wait_for_timeout(4000)
-        return "/login" not in page.url
+        return self._logged_in(page)
+
+    def _username_input(self, page):
+        user = page.locator("input[name='text']").first
+        try:
+            user.wait_for(state="visible", timeout=5000)
+            return user
+        except Exception:  # noqa: BLE001
+            pass
+
+        for label in ("Email or username", "Use email or username"):
+            option = page.get_by_text(label, exact=True)
+            if option.count():
+                option.first.click()
+                break
+
+        user.wait_for(state="visible", timeout=15000)
+        return user
+
+    def _submit_login(self, page) -> None:
+        button = page.get_by_role("button", name="Log in")
+        if button.count():
+            button.first.click(force=True)
+            return
+        text_button = page.get_by_text("Continue", exact=True)
+        if text_button.count():
+            text_button.first.click(force=True)
+            return
+        page.keyboard.press("Enter")
+
+    def _logged_in(self, page) -> bool:
+        return "/login" not in page.url and "/onboarding" not in page.url
 
     def _click_next(self, page) -> None:
         for name in ("Next", "Continue"):

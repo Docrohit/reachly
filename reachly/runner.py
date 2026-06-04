@@ -23,8 +23,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="reachly", description="Reachly thought-leadership agent")
     parser.add_argument(
         "command",
-        choices=["once", "run", "preview", "instagram"],
-        help="once=all enabled | instagram=IG test | run=scheduler | preview=dry-run",
+        choices=["once", "run", "preview", "instagram", "twitter"],
+        help="once=all enabled | instagram=IG test | twitter=X test | run=scheduler | preview=dry-run",
     )
     parser.add_argument("--theme", default=None, help="override today's theme")
     parser.add_argument("--env", default=".env", help="path to .env file")
@@ -54,6 +54,11 @@ def main(argv=None) -> int:
         if args.theme:
             agent.run_linkedin_slot(theme=args.theme)
         agent.run_instagram_slot()
+        agent.close()
+        return 0
+
+    if args.command == "twitter":
+        agent.run_once(theme=args.theme, platforms=[Platform.twitter])
         agent.close()
         return 0
 

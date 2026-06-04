@@ -194,11 +194,11 @@ class Agent:
         return post
 
     def run_linkedin_slot(self, theme: Optional[str] = None) -> dict[Platform, PostResult]:
-        """Generate content, queue for Instagram, post LinkedIn only."""
+        """Generate content, queue for Instagram, post primary text platforms."""
         with self._run_lock:
             post = self.build_post(theme)
             self._save_pending(post)
-            return self._publish(post, platforms=[Platform.linkedin])
+            return self._publish(post, platforms=[Platform.linkedin, Platform.twitter])
 
     def run_instagram_slot(self) -> dict[Platform, PostResult]:
         """Post to Instagram using pending LinkedIn content + generated image."""
