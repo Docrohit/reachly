@@ -1,0 +1,15 @@
+[Unit]
+Description=Reachly Hygaar dashboard
+After=network-online.target
+
+[Service]
+Type=simple
+User=reachly
+WorkingDirectory=/opt/reachly
+EnvironmentFile=/opt/reachly/.env
+ExecStart=/opt/reachly/.venv/bin/python -m reachly.dashboard
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

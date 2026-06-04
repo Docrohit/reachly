@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Reachly{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+{% if not user.is_active %}
+<div class="card" style="border-color:var(--brand)">
+  <b>Your account is in preview.</b>
+  <span class="muted">Upgrade to start posting for real and to download the self-host agent.</span>
+  <a class="btn primary" href="/billing" style="margin-left:8px">Upgrade</a>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Posting schedule</h2>
+  <form method="post" action="/dashboard/settings">
+    <div class="row">
+      <div><label>Daily post time (HH:MM)</label><input name="post_time" value="{{ user.post_time }}"/></div>
+      <div><label>Timezone (IANA)</label><input name="timezone" value="{{ user.timezone }}"/></div>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <div><label>Attach an AI image</label>
+        <select name="attach_image"><option value="on" {{ 'selected' if user.attach_image }}>Yes</option>
+        <option value="off" {{ 'selected' if not user.attach_image }}>No</option></select></div>
+      <div><label>Mode</label>
+        <select name="dry_run"><option value="on" {{ 'selected' if user.dry_run }}>Dry run (preview only)</option>
+        <option value="off" {{ 'selected' if not user.dry_run }}>Live (actually post)</option></select></div>
+    </div>
+    <button class="btn primary" style="margin-top:14px" type="submit">Save schedule</button>
+  </form>
+  <div style="margin-top:14px">
+    <button class="btn" onclick="runNow()">▶ Generate &amp; post now</button>
+    <span id="runMsg" class="muted"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Your business</h2>
+  <form method="post" action="/dashboard/profile">
+    <div class="row">
+      <div><label>Business name</label><input name="name" value="{{ profile.name if profile else '' }}" required/></div>
+      <div><label>Website</label><input name="website" value="{{ profile.website if profile else '' }}"/></div>
+    </div>
+    <label>Sector / industry</label><input name="sector" value="{{ profile.sector if profile else '' }}"/>
+    <label>Vision (what you're building & why)</label>
+    <textarea name="vision">{{ profile.vision if profile else '' }}</textarea>
+    <label>Product / service info</label>
+    <textarea name="product_info">{{ profile.product_info if profile else '' }}</textarea>
+    <label>Goals / campaign context</label>
+    <textarea name="goals" placeholder="Quarterly focus, ICP, launches, campaign constraints">{{ profile.goals if profile else '' }}</textarea>
+    <div class="row">
+      <div><label>Context repo path (optional)</label>
+        <input name="context_repo" value="{{ profile.context_repo if profile and profile.context_repo else '' }}"
+          placeholder="/opt/customer-product or /repo/path"/></div>
+      <div><label>Posting style</label>
+        {% set ps = profile.posting_style if profile else 'thought_leader' %}
+        <select name="posting_style">
+          <option value="thought_leader" {{ 'selected' if ps=='thought_leader' }}>Thought leader</option>
+          <option value="brand_promoter" {{ 'selected' if ps=='brand_promoter' }}>Brand promoter</option>
+        </select></div>
+    </div>
+    <label>Brand voice</label>
+    <input name="brand_voice" value="{{ profile.brand_voice if profile else 'Confident, helpful, and human. No hype.' }}"/>
+    <div class="row">
+      <div><label>Content themes (comma-separated)</label>
+        <input name="content_themes" value="{{ profile.content_themes if profile else '' }}"
+          placeholder="industry trends, customer wins, founder lessons"/></div>
+      <div><label>Default hashtags</label>
+        <input name="default_hashtags" value="{{ profile.default_hashtags if profile else '' }}"
+          placeholder="#automation #robotics"/></div>
+    </div>
+    <label>Language</label><input name="language" value="{{ profile.language if profile else 'English' }}"/>
+
+    <h2 style="margin-top:24px">AI providers (your own keys)</h2>
+    <p class="muted">Keys are encrypted. Leave blank to keep what's saved. Plug in your
+      own Gemini/OpenAI/Anthropic keys, or use your Hygaar account for premium media.</p>
+    <div class="row">
+      <div><label>Text model</label>
+        <select name="llm_provider">
+          {% set lp = profile.llm_provider if profile else 'gemini' %}
+          <option value="gemini" {{ 'selected' if lp=='gemini' }}>Gemini</option>
+          <option value="openai" {{ 'selected' if lp=='openai' }}>OpenAI</option>
+          <option value="anthropic" {{ 'selected' if lp=='anthropic' }}>Anthropic</option>
+        </select></div>
+      <div><label>Image generation</label>
+        <select name="image_provider">
+          {% set ip = profile.image_provider if profile else 'gemini' %}
+          <option value="gemini" {{ 'selected' if ip=='gemini' }}>Gemini (Nano Banana)</option>
+          <option value="hygaar" {{ 'selected' if ip=='hygaar' }}>Hygaar</option>
+          <option value="none" {{ 'selected' if ip=='none' }}>None</option>
+        </select></div>
+      <div><label>Video generation</label>
+        <select name="video_provider">
+          {% set vp = profile.video_provider if profile else 'none' %}
+          <option value="none" {{ 'selected' if vp=='none' }}>None</option>
+          <option value="hygaar" {{ 'selected' if vp=='hygaar' }}>Hygaar</option>
+        </select></div>
+    </div>
+    <div class="row">
+      <div><label>Gemini API key</label><input name="gemini_api_key" type="password" placeholder="•••• (saved)"/></div>
+      <div><label>OpenAI API key</label><input name="openai_api_key" type="password" placeholder="•••• (saved)"/></div>
+      <div><label>Anthropic API key</label><input name="anthropic_api_key" type="password" placeholder="•••• (saved)"/></div>
+    </div>
+    <div class="row">
+      <div><label>Hygaar base URL</label><input name="hygaar_base_url" placeholder="https://dev-genai.hygaar.com"/></div>
+      <div><label>Hygaar API key (X-API-Key)</label><input name="hygaar_api_token" type="password" placeholder="hygaar_••••"/></div>
+    </div>
+    <button class="btn primary" style="margin-top:16px" type="submit">Save business &amp; providers</button>
+  </form>
+</div>
+
+<div class="grid cols2">
+  {% for p in ['twitter','linkedin','instagram'] %}
+  <div class="card">
+    <h2 style="text-transform:capitalize">{{ p }}
+      <span class="pill {{ 'on' if cred_modes.get(p,'off')!='off' else 'off' }}">
+        {{ cred_modes.get(p,'off') }}</span></h2>
+    <form method="post" action="/dashboard/platform">
+      <input type="hidden" name="platform" value="{{ p }}"/>
+      <label>Mode</label>
+      {% set m = cred_modes.get(p,'off') %}
+      <select name="mode">
+        <option value="off" {{ 'selected' if m=='off' }}>Off</option>
+        <option value="api" {{ 'selected' if m=='api' }}>API</option>
+        <option value="browser" {{ 'selected' if m=='browser' }}>Headless browser</option>
+      </select>
+
+      {% if p=='twitter' %}
+        <label>OAuth2 user token (API mode)</label><input name="oauth2_token" type="password" placeholder="•••• (saved)"/>
+        <div class="row">
+          <div><label>Username (browser mode)</label><input name="username"/></div>
+          <div><label>Password (browser mode)</label><input name="password" type="password"/></div>
+        </div>
+        <label>Login email/phone if X asks again</label><input name="login_identifier" placeholder="optional checkpoint value"/>
+      {% elif p=='linkedin' %}
+        <label>Access token (API mode)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
+        <label>Person URN (optional)</label><input name="person_urn" placeholder="urn:li:person:..."/>
+        <div class="row">
+          <div><label>Email (browser mode)</label><input name="email"/></div>
+          <div><label>Password (browser mode)</label><input name="password" type="password"/></div>
+        </div>
+      {% else %}
+        <label>Access token (API mode)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
+        <label>IG user id (API mode)</label><input name="ig_user_id"/>
+        <div class="row">
+          <div><label>Username (browser mode)</label><input name="username"/></div>
+          <div><label>Password (browser mode)</label><input name="password" type="password"/></div>
+        </div>
+      {% endif %}
+      <button class="btn primary" style="margin-top:12px" type="submit">Save {{ p }}</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Recent activity</h2>
+  {% if logs %}
+  <table>
+    <tr><th>When (UTC)</th><th>Platform</th><th>Status</th><th>Link / error</th></tr>
+    {% for l in logs %}
+    <tr>
+      <td class="muted">{{ l.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td style="text-transform:capitalize">{{ l.platform }}</td>
+      <td>{% if l.ok %}<span class="ok">✓ ok</span>{% else %}<span class="err">✗ failed</span>{% endif %}</td>
+      <td class="muted">{% if l.permalink %}<a href="{{ l.permalink }}" target="_blank">{{ l.permalink }}</a>{% else %}{{ l.error }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No posts yet. Save your profile, connect a channel, and hit “Generate &amp; post now”.</p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function runNow(){
+  const msg = document.getElementById('runMsg');
+  msg.textContent = ' Working… generating content & media…';
+  const r = await fetch('/dashboard/run-now',{method:'POST'});
+  const j = await r.json();
+  msg.textContent = ' ' + JSON.stringify(j);
+  setTimeout(()=>location.reload(), 1500);
+}
+</script>
+{% endblock %}

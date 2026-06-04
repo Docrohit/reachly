@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Reachly{% endblock %}</title>
+  <style>
+    :root{
+      --bg:#0b0d12; --panel:#141821; --panel2:#1b2230; --line:#26304200;
+      --border:#26304a; --text:#e9edf5; --muted:#97a3b6; --brand:#6c8cff;
+      --brand2:#9d6cff; --ok:#34d399; --err:#f87171; --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+      background:radial-gradient(1200px 600px at 70% -10%,#1a2236 0,transparent 60%),var(--bg);
+      color:var(--text);line-height:1.55}
+    a{color:var(--brand);text-decoration:none}
+    .wrap{max-width:1040px;margin:0 auto;padding:24px}
+    nav{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;
+      border-bottom:1px solid var(--border);position:sticky;top:0;backdrop-filter:blur(8px);
+      background:rgba(11,13,18,.7);z-index:10}
+    .logo{font-weight:800;font-size:20px;letter-spacing:-.5px}
+    .logo span{background:linear-gradient(90deg,var(--brand),var(--brand2));
+      -webkit-background-clip:text;background-clip:text;color:transparent}
+    .btn{display:inline-block;padding:10px 16px;border-radius:10px;font-weight:600;cursor:pointer;
+      border:1px solid var(--border);background:var(--panel2);color:var(--text);transition:.15s}
+    .btn:hover{transform:translateY(-1px)}
+    .btn.primary{background:linear-gradient(90deg,var(--brand),var(--brand2));border:none;color:#fff}
+    .btn.ghost{background:transparent}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+      padding:22px;margin-bottom:18px}
+    .grid{display:grid;gap:18px}
+    @media(min-width:760px){.grid.cols2{grid-template-columns:1fr 1fr}}
+    h1{font-size:40px;letter-spacing:-1px;margin:.2em 0}
+    h2{font-size:22px;margin:.2em 0 .6em}
+    .muted{color:var(--muted)}
+    label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+    input,textarea,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+      background:var(--panel2);color:var(--text);font-size:14px;font-family:inherit}
+    textarea{min-height:80px;resize:vertical}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row>div{flex:1;min-width:180px}
+    .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+    .pill.on{background:rgba(52,211,153,.15);color:var(--ok)}
+    .pill.off{background:rgba(151,163,182,.15);color:var(--muted)}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
+    .ok{color:var(--ok)} .err{color:var(--err)}
+    .hero-tags span{display:inline-block;margin:4px;padding:6px 12px;border:1px solid var(--border);
+      border-radius:999px;font-size:13px;color:var(--muted)}
+    footer{padding:40px 24px;color:var(--muted);text-align:center;border-top:1px solid var(--border)}
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="logo" href="/">Reach<span>ly</span></a>
+    <div class="row" style="gap:10px">
+      {% if user %}
+        <a class="btn ghost" href="/dashboard">Dashboard</a>
+        <a class="btn ghost" href="/logout">Log out</a>
+      {% else %}
+        <a class="btn ghost" href="/login">Log in</a>
+        <a class="btn primary" href="/login">Get started</a>
+      {% endif %}
+    </div>
+  </nav>
+  <div class="wrap">
+    {% block content %}{% endblock %}
+  </div>
+  <footer>Reachly — your AI thought-leadership autopilot · posts daily on LinkedIn, X & Instagram</footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

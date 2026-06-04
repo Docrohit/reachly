@@ -1,0 +1,16 @@
+[Unit]
+Description=Reachly hosted SaaS app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=reachly
+WorkingDirectory=/opt/reachly-saas
+EnvironmentFile=/opt/reachly-saas/.env
+ExecStart=/opt/reachly-saas/.venv/bin/uvicorn server.app:app --host 127.0.0.1 --port 8050
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

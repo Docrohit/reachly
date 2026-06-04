@@ -1,0 +1,20 @@
+# systemd unit for the standalone Reachly agent (self-hosted, single business).
+# Install:
+#   sudo cp deploy/reachly-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now reachly-agent
+[Unit]
+Description=Reachly thought-leadership agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=reachly
+WorkingDirectory=/opt/reachly
+EnvironmentFile=/opt/reachly/.env
+ExecStart=/opt/reachly/.venv/bin/python -m reachly.runner run
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

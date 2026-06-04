@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Self-host · Reachly{% endblock %}
+{% block content %}
+<h1>Run Reachly on your own server</h1>
+<div class="card">
+  <h2>Your license key</h2>
+  <p class="muted">Keep this private. It identifies your paid install.</p>
+  <input value="{{ license_key }}" readonly onclick="this.select()"/>
+</div>
+<div class="card">
+  <h2>Install in 3 steps</h2>
+  <ol>
+    <li>Download the agent and install dependencies:
+<pre style="background:var(--panel2);padding:14px;border-radius:10px;overflow:auto">git clone &lt;your-reachly-repo&gt; reachly
+cd reachly
+pip install -r requirements.txt
+python -m playwright install chromium   # only if you use browser mode</pre>
+    </li>
+    <li>Copy <code>.env.example</code> to <code>.env</code> and fill in your business
+      info, your AI keys, and your platform credentials.</li>
+    <li>Preview, then go live:
+<pre style="background:var(--panel2);padding:14px;border-radius:10px;overflow:auto">python -m reachly.runner preview     # writes a post, shows it, never posts
+# set DRY_RUN="no" in .env, then:
+python -m reachly.runner run         # posts daily at POST_TIME</pre>
+    </li>
+  </ol>
+  <p class="muted">Tip: run it under <code>systemd</code>, <code>tmux</code>, or Docker so it
+    keeps running. A sample <code>Dockerfile</code> and unit file are in <code>deploy/</code>.</p>
+</div>
+{% endblock %}

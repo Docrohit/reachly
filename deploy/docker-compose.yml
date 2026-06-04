@@ -1,0 +1,28 @@
+# Runs the hosted Reachly SaaS server.
+# For the standalone single-tenant agent, see deploy/agent.compose.yml.
+services:
+  reachly-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: uvicorn server.app:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      REACHLY_DATABASE_URL: "sqlite:////data/reachly_server.db"
+      REACHLY_ENVIRONMENT: "${REACHLY_ENVIRONMENT:-development}"
+      REACHLY_VAULT_KEY: "${REACHLY_VAULT_KEY}"
+      REACHLY_SESSION_SECRET: "${REACHLY_SESSION_SECRET}"
+      REACHLY_TELEGRAM_BOT_TOKEN: "${REACHLY_TELEGRAM_BOT_TOKEN}"
+      REACHLY_TELEGRAM_BOT_USERNAME: "${REACHLY_TELEGRAM_BOT_USERNAME}"
+      REACHLY_PUBLIC_BASE_URL: "${REACHLY_PUBLIC_BASE_URL:-http://localhost:8000}"
+      REACHLY_MEDIA_DIR: "/data/media"
+      REACHLY_FREE_MODE: "${REACHLY_FREE_MODE:-true}"
+      REACHLY_STRIPE_SECRET_KEY: "${REACHLY_STRIPE_SECRET_KEY:-}"
+      REACHLY_STRIPE_PRICE_ID: "${REACHLY_STRIPE_PRICE_ID:-}"
+      REACHLY_STRIPE_WEBHOOK_SECRET: "${REACHLY_STRIPE_WEBHOOK_SECRET:-}"
+    volumes:
+      - reachly-data:/data
+
+volumes:
+  reachly-data:

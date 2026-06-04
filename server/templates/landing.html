@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<section style="text-align:center;padding:60px 0 30px">
+  <span class="pill on">AI · Autopilot · Daily</span>
+  <h1>Show up as a thought leader<br/>every single day — on autopilot.</h1>
+  <p class="muted" style="font-size:18px;max-width:680px;margin:0 auto">
+    Reachly studies your business, vision and sector, then writes and publishes
+    on-brand posts to <b>LinkedIn</b>, <b>X</b> and <b>Instagram</b> for you —
+    with images, hashtags and links back to your business. Use your own AI keys
+    or plug in <b>Hygaar</b> for premium image &amp; video generation.
+  </p>
+  <div class="row" style="justify-content:center;margin-top:26px">
+    <a class="btn primary" href="/login">Start with Telegram</a>
+    <a class="btn ghost" href="#how">How it works</a>
+  </div>
+  <div class="hero-tags" style="margin-top:30px">
+    <span>#thoughtleadership</span><span>auto-generated images</span>
+    <span>API or headless browser</span><span>your keys, your data</span>
+    <span>self-host or hosted</span>
+  </div>
+</section>
+
+<div class="grid cols2" id="how" style="margin-top:30px">
+  <div class="card">
+    <h2>1 · Sign in with Telegram</h2>
+    <p class="muted">No passwords. Message our bot, get a one-time code, you're in.
+    Your credentials are encrypted in a vault and only decrypted at posting time.</p>
+  </div>
+  <div class="card">
+    <h2>2 · Describe your business</h2>
+    <p class="muted">Vision, sector, product, website, brand voice and content themes.
+    Reachly rotates themes daily so you never repeat yourself.</p>
+  </div>
+  <div class="card">
+    <h2>3 · Connect your channels</h2>
+    <p class="muted">Use official APIs (LinkedIn / X / Instagram) or headless
+    browser mode when you don't have API access. Choose per platform.</p>
+  </div>
+  <div class="card">
+    <h2>4 · It posts every day</h2>
+    <p class="muted">Pick a time and timezone. Reachly writes, generates media,
+    and publishes — with hashtags and a link back to you. Start in dry-run to
+    preview before going live.</p>
+  </div>
+</div>
+
+<div class="card" style="text-align:center;margin-top:10px">
+  <h2>Two ways to run it</h2>
+  <div class="grid cols2" style="margin-top:10px">
+    <div>
+      <h3>Hosted</h3>
+      <p class="muted">We run it for you. Sign in, configure, done.</p>
+    </div>
+    <div>
+      <h3>Self-hosted</h3>
+      <p class="muted">After upgrading, download the agent, drop your keys into a
+      <code>.env</code>, and run it on your own server.</p>
+    </div>
+  </div>
+  <a class="btn primary" href="/login" style="margin-top:14px">Get started</a>
+</div>
+{% endblock %}

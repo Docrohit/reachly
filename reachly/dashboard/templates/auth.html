@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Reachly · Sign in</title>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#0b0d12;color:#e9edf5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+    .card{background:#141821;border:1px solid #26304a;border-radius:14px;padding:28px;width:min(400px,92vw)}
+    input{width:100%;padding:10px;border-radius:8px;border:1px solid #26304a;background:#1b2230;color:#fff;margin:8px 0 16px}
+    button{width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(90deg,#6c8cff,#9d6cff);color:#fff;font-weight:600;cursor:pointer}
+    .err{color:#f87171;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Reachly</h1>
+    <p>Enter your dashboard token.</p>
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <form method="post" action="/auth">
+      <input name="token" type="password" placeholder="REACHLY_DASHBOARD_TOKEN" autofocus/>
+      <button type="submit">Continue</button>
+    </form>
+  </div>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Upgrade · Reachly{% endblock %}
+{% block content %}
+<h1>Upgrade to Reachly Pro</h1>
+<div class="grid cols2">
+  <div class="card">
+    <h2>Pro</h2>
+    <p class="muted">Everything you need to run daily, for real.</p>
+    <ul class="muted">
+      <li>Live posting to LinkedIn, X &amp; Instagram</li>
+      <li>Daily AI content + image generation</li>
+      <li>API &amp; headless browser modes</li>
+      <li>Self-host download + license key</li>
+    </ul>
+    {% if user.is_active %}
+      <p class="ok">You're already Pro 🎉</p>
+      <a class="btn" href="/install">Get the self-host agent</a>
+    {% else %}
+      <button class="btn primary" onclick="checkout()">Upgrade now</button>
+      <p id="msg" class="muted"></p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>How billing works</h2>
+    <p class="muted">Checkout is handled by Stripe. When payment completes, your
+      account is activated automatically and you can switch from dry-run to live,
+      or download the self-host package.</p>
+    {% if not settings.stripe_secret_key %}
+    <p class="err">Billing isn't configured on this server yet
+      (set <code>REACHLY_STRIPE_*</code>). The server owner can activate approved
+      accounts from Telegram until Stripe is connected.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function checkout(){
+  const msg=document.getElementById('msg'); msg.textContent='Redirecting to checkout…';
+  const r=await fetch('/billing/checkout',{method:'POST'});
+  const j=await r.json();
+  if(j.url){location.href=j.url;}else{msg.textContent=j.error||'Could not start checkout.';}
+}
+</script>
+{% endblock %}

@@ -1,0 +1,27 @@
+# ---- Core agent ----
+pydantic>=2.6
+pydantic-settings>=2.2
+python-dotenv>=1.0
+requests>=2.31
+APScheduler>=3.10
+tenacity>=8.2
+Pillow>=10.2
+python-dateutil>=2.9
+
+# ---- LLM + media providers (install what you use) ----
+google-genai>=1.0          # Gemini text + image (Nano Banana)
+openai>=1.30               # optional: OpenAI text models
+anthropic>=0.34            # optional: Claude text models
+
+# ---- Headless browser posting mode ----
+playwright>=1.44
+
+# ---- SaaS server (only needed for the hosted product) ----
+fastapi>=0.111
+uvicorn[standard]>=0.30
+sqlmodel>=0.0.18
+jinja2>=3.1
+itsdangerous>=2.2
+cryptography>=42.0
+python-multipart>=0.0.9
+stripe>=9.0                # optional: payments

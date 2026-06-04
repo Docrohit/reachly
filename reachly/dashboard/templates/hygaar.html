@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Reachly · Hygaar</title>
+  <style>
+    :root{--bg:#0b0d12;--panel:#141821;--border:#26304a;--text:#e9edf5;--muted:#97a3b6;--brand:#6c8cff;--ok:#34d399}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+    .wrap{max-width:960px;margin:0 auto;padding:24px}
+    h1{margin:0 0 4px}
+    .muted{color:var(--muted);font-size:14px}
+    .grid{display:grid;gap:16px}
+    @media(min-width:720px){.grid.cols2{grid-template-columns:1fr 1fr}}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px}
+    label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+    input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:#1b2230;color:var(--text);font:inherit}
+    textarea{min-height:140px}
+    .btn{display:inline-block;padding:10px 16px;border-radius:8px;border:none;font-weight:600;cursor:pointer;margin-right:8px;margin-top:8px}
+    .btn.primary{background:linear-gradient(90deg,#6c8cff,#9d6cff);color:#fff}
+    .btn.ghost{background:#1b2230;color:var(--text);border:1px solid var(--border)}
+    .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:rgba(108,140,255,.2);color:var(--brand)}
+  pre{background:#1b2230;padding:12px;border-radius:8px;font-size:12px;overflow:auto;max-height:200px;white-space:pre-wrap}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px;text-align:left;border-bottom:1px solid var(--border)}
+  .ok{color:var(--ok)} .bad{color:#f87171}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header style="margin-bottom:24px">
+    <h1>Reachly <span class="pill">Hygaar</span></h1>
+    <p class="muted">Goals drive posts. If empty, we read <code>AGENTS.md</code> + <code>product_theory.md</code> from your repo.</p>
+    {% if request.query_params.get('saved') %}<p class="ok">Settings saved.</p>{% endif %}
+  </header>
+
+  <form method="post" action="/save">
+    <div class="grid cols2">
+      <div class="card" style="grid-column:1/-1">
+        <h2>Business goals</h2>
+        <p class="muted">What should Reachly optimize for this quarter? Campaigns, ICP, messages to push. When filled, this overrides generic prompts.</p>
+        <textarea name="goals" placeholder="e.g. Position Hygaar as the AI media layer for e-commerce brands in EU. Push agentic pipelines, virtual try-on, and speed vs studio shoots...">{{ goals }}</textarea>
+      </div>
+
+      <div class="card">
+        <h2>Posting style</h2>
+        <label>Voice</label>
+        <select name="posting_style">
+          <option value="thought_leader" {{ 'selected' if dash.posting_style=='thought_leader' }}>Thought leader (insights first)</option>
+          <option value="brand_promoter" {{ 'selected' if dash.posting_style=='brand_promoter' }}>Hygaar promoter (product + market education)</option>
+        </select>
+        <label>Post times ({{ cfg.timezone }})</label>
+        <input name="post_times" value="{{ dash.post_times | join(',') }}" placeholder="{{ default_times }}"/>
+        <label>Instagram offset after LinkedIn (minutes)</label>
+        <input name="instagram_offset_minutes" value="{{ dash.instagram_offset_minutes or 5 }}" type="number" min="1" max="180"/>
+        <p class="muted">Default Hygaar: 9:00 AM, 1:30 PM, 9:00 PM</p>
+      </div>
+
+      <div class="card">
+        <h2>Context repo</h2>
+        <label>Path to product repo (for AGENTS.md + product_theory.md)</label>
+        <input name="context_repo" value="{{ dash.context_repo or cfg.context_repo or '' }}" placeholder="/var/www/html/dev-env/hdb_backend"/>
+        <p class="muted">Strategy source now: <strong>{{ strategy_source }}</strong></p>
+      </div>
+    </div>
+
+    <button class="btn primary" type="submit">Save goals &amp; schedule</button>
+  </form>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Actions</h2>
+    <form method="post" action="/run-now" style="display:inline" onsubmit="runNow(event)">
+      <input type="hidden" name="theme" id="themeInput" value=""/>
+      <input type="text" placeholder="Optional theme override" onchange="document.getElementById('themeInput').value=this.value" style="width:220px;display:inline-block;margin-right:8px"/>
+      <button class="btn primary" type="submit">Run now</button>
+    </form>
+    <span id="runMsg" class="muted"></span>
+    <p class="muted">Uses enabled platform modes on server. DRY_RUN={{ cfg.dry_run }} in .env</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Strategy preview (what the LLM sees)</h2>
+    <pre>{{ strategy_preview or '(no context loaded yet — set goals or context repo path)' }}</pre>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Recent posts</h2>
+    {% if logs %}
+    <table>
+      <tr><th>When (UTC)</th><th>Platform</th><th>Status</th><th>Hook / error</th></tr>
+      {% for l in logs %}
+      <tr>
+        <td class="muted">{{ l.created_at }}</td>
+        <td>{{ l.platform }}</td>
+        <td>{% if l.ok %}<span class="ok">ok</span>{% else %}<span class="bad">fail</span>{% endif %}</td>
+        <td>{{ l.hook or l.error }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">No posts logged yet.</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+async function runNow(e){
+  e.preventDefault();
+  const msg=document.getElementById('runMsg');
+  msg.textContent=' Running…';
+  const fd=new FormData(e.target);
+  const r=await fetch('/run-now',{method:'POST',body:fd});
+  const j=await r.json();
+  msg.textContent=j.message||JSON.stringify(j);
+  setTimeout(()=>location.reload(),4000);
+}
+</script>
+</body>
+</html>

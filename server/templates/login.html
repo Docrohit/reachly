@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Reachly{% endblock %}
+{% block content %}
+<div style="max-width:460px;margin:40px auto">
+  <div class="card">
+    <h2>Sign in with Telegram</h2>
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <ol class="muted" style="padding-left:18px">
+      <li>Open
+        {% if bot %}<a href="https://t.me/{{ bot }}" target="_blank">@{{ bot }}</a>{% else %}our Telegram bot{% endif %}
+        and send <code>/start</code>.</li>
+      <li>Enter the handle it gives you below and request a code.</li>
+      <li>Type the code we DM you.</li>
+    </ol>
+
+    <label>Your Telegram handle or ID</label>
+    <input id="handle" placeholder="@yourname or 123456789" />
+    <button class="btn primary" style="margin-top:12px;width:100%" onclick="sendCode()">Send me a code</button>
+    <p id="msg" class="muted" style="min-height:20px;margin-top:8px"></p>
+
+    <form method="post" action="/auth/verify" id="verifyForm" style="display:none">
+      <input type="hidden" name="handle" id="handleHidden" />
+      <label>Enter the 6-digit code</label>
+      <input name="code" inputmode="numeric" maxlength="6" placeholder="••••••" />
+      <button class="btn primary" style="margin-top:12px;width:100%" type="submit">Verify &amp; sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function sendCode(){
+  const handle = document.getElementById('handle').value.trim();
+  const msg = document.getElementById('msg');
+  if(!handle){msg.textContent='Enter your handle first.';return;}
+  msg.textContent='Sending…';
+  const fd = new FormData(); fd.append('handle', handle);
+  const r = await fetch('/auth/send-code',{method:'POST',body:fd});
+  const j = await r.json();
+  msg.textContent = j.message;
+  if(j.ok){
+    document.getElementById('handleHidden').value = handle;
+    document.getElementById('verifyForm').style.display='block';
+  }
+}
+</script>
+{% endblock %}
