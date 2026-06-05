@@ -3,7 +3,7 @@
 **Developer:** Rohit + AI pair session
 **Date:** 2026-06-05
 **Time:** 17:17 IST
-**Quality Review:** Passed locally; Hygaar deploy/post verification blocked by SSH timeout
+**Quality Review:** Passed locally and on Hygaar self-hosted
 
 ## What We Worked On
 
@@ -12,6 +12,7 @@
 - Fixed the X API poster so media upload billing errors fall back to text-only instead of dropping the whole post.
 - Replaced Hygaar's white-background logo workflow with a transparent-logo asset.
 - Added a defensive logo cleanup path for future companies that upload JPEG/PNG logos with white backgrounds.
+- Fixed LinkedIn company-admin posting for the modal variant where `Create` opens a menu and `Start a post` is a clickable row.
 
 ## What Changed
 
@@ -22,6 +23,7 @@
 | `assets/hygaar_logo_transparent.png` | Added transparent Hygaar logo asset | Prevent white square logo overlays in generated social images | Assets |
 | `reachly/media.py` | Preserves existing alpha and removes near-white backgrounds from no-alpha logo exports | Productized logo handling for any company, not only Hygaar | Media |
 | `tests/test_media_branding.py` | Added white-background logo regression test | Catch visible logo-box regressions | Tests |
+| `reachly/platforms/linkedin.py` | Clicks the LinkedIn company-admin `Start a post` row by clickable ancestor | LinkedIn's admin Create modal exposes text inside a larger row, not a simple button | Platform |
 
 ## Verification
 
@@ -33,6 +35,16 @@
 - Personal SaaS deploy completed:
   - `reachly-saas` active
   - local health endpoint returned `{"ok":true}`
+- Hygaar self-hosted deploy completed after reconnecting OpenVPN:
+  - `reachly-agent` active
+  - `reachly-dashboard` active
+  - server branding tests passed
+  - transparent logo asset is RGBA with alpha range `(0, 255)`
+- All-platform live post run after transparent-logo deploy:
+  - X succeeded: `https://x.com/i/web/status/2062865508639424652`
+  - Instagram succeeded
+  - LinkedIn initially failed on company-admin composer detection, then succeeded after the selector fix
+- Generated post image `image_1780660434.png` was visually checked and has the transparent logo without a white box.
 
 ## Deploy State
 
@@ -41,27 +53,24 @@
   - Transparent logo code and asset are deployed.
   - Service is active and healthy.
 - Hygaar self-hosted:
-  - Still running the previous code at the time this note was written.
-  - Sync of commit `7c1103e` was blocked because SSH to the private server timed out.
-  - Required next deploy action: sync `reachly/media.py`, `tests/test_media_branding.py`, and `assets/hygaar_logo_transparent.png`, then set `BRAND_LOGO_PATH=/opt/reachly/assets/hygaar_logo_transparent.png`.
+  - Updated with transparent-logo media code and LinkedIn company-admin modal fix.
+  - `BRAND_LOGO_PATH=/opt/reachly/assets/hygaar_logo_transparent.png`.
+  - Services active after restart.
 - Platform status:
   - X API posting works when credits are available.
   - X media upload worked in the successful post after credits were added.
-  - LinkedIn and Instagram were not retested in this session after the transparent-logo change because Hygaar SSH was unavailable.
+  - Instagram browser posting works with transparent-logo media.
+  - LinkedIn company-page browser posting works after the modal-row fix.
 
 ## Risks / Follow-ups
 
-- Retry Hygaar SSH before the next scheduled run and deploy commit `7c1103e`.
-- Run one all-platform post only after the transparent logo asset is active on Hygaar self-hosted.
-- Verify the resulting post images on X, LinkedIn, and Instagram visually, not only via Reachly success logs.
+- Verify the resulting post images on LinkedIn and Instagram pages visually when convenient; Reachly history reports success, and X was verified by permalink.
 - Keep monitoring X API credits; when credits are depleted, API posting fails with `CreditsDepleted`.
+- The one-off LinkedIn SSH wrapper did not flush cleanly after the browser process exited, but no matching one-off runner remained on the server and Reachly history recorded LinkedIn success.
 
 ## Next Session Start Here
 
-1. Confirm local repo is at commit `7c1103e`.
-2. Retry SSH to the Hygaar self-hosted Reachly server.
-3. Deploy the transparent-logo code/asset and update `BRAND_LOGO_PATH`.
-4. Restart `reachly-agent` and `reachly-dashboard`.
-5. Run:
-   `sudo .venv/bin/python -m reachly.runner once --env .env --theme "fashion catalog automation"`
-6. Verify the new image uses the transparent logo and appears correctly on X, LinkedIn, and Instagram.
+1. Confirm local repo includes the LinkedIn modal fix and this session note.
+2. Check `/opt/reachly/.reachly_data/history.db` for the latest scheduled posts.
+3. Monitor X credits before scheduled runs.
+4. If LinkedIn fails again, inspect the latest `.reachly_data/debug/linkedin_*.png` before changing selectors.

@@ -319,10 +319,7 @@ class LinkedInBrowserPoster(Poster):
             return True
 
         try:
-            start_text = page.get_by_text(re.compile(r"^start a post$", re.I)).first
-            if start_text.count():
-                start_text.scroll_into_view_if_needed(timeout=5000)
-                start_text.click(timeout=8000, force=True)
+            if self._click_start_post_menu_item(page):
                 page.wait_for_timeout(2500)
                 if self._find_editor(page) is not None:
                     return True
@@ -352,6 +349,10 @@ class LinkedInBrowserPoster(Poster):
                     if self._find_editor(page) is not None:
                         return True
                     # Some admin variants open a small menu after Create.
+                    if self._click_start_post_menu_item(page):
+                        page.wait_for_timeout(2500)
+                        if self._find_editor(page) is not None:
+                            return True
                     menu_items = [
                         lambda: page.get_by_role("menuitem", name=re.compile(r"start a post", re.I)).first,
                         lambda: page.get_by_text(re.compile(r"^start a post$", re.I)).first,
@@ -370,6 +371,32 @@ class LinkedInBrowserPoster(Poster):
                                     return True
                         except Exception:  # noqa: BLE001
                             continue
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    def _click_start_post_menu_item(self, page) -> bool:
+        """Click LinkedIn admin's Create > Start a post row, not only its text node."""
+        selectors = [
+            "div[role='dialog'] :text('Start a post')",
+            "div[aria-modal='true'] :text('Start a post')",
+            ":text('Start a post')",
+        ]
+        for selector in selectors:
+            try:
+                loc = page.locator(selector).first
+                if not (loc.count() and loc.is_visible()):
+                    continue
+                loc.scroll_into_view_if_needed(timeout=5000)
+                loc.evaluate(
+                    """el => {
+                        const clickable = el.closest(
+                            'button,a,[role="button"],[role="menuitem"],li,div'
+                        );
+                        clickable.click();
+                    }"""
+                )
+                return True
             except Exception:  # noqa: BLE001
                 continue
         return False
