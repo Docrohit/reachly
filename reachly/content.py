@@ -44,8 +44,15 @@ Requirements:
   Thought-leadership, NOT a sales pitch. At most a soft mention of the business.
 - 4-8 relevant, specific "hashtags" (mix of niche + broad). Always include these
   brand hashtags if they fit: {brand_tags}
-- A short "image_prompt": a vivid, brand-safe description for an illustrative image
-  (no text overlays, no logos, professional, on-theme).
+- A short "image_prompt": a vivid, brand-safe description for a concrete ecommerce
+  product/fashion image. It must show real products or models/styling scenes that
+  fit the business category. Avoid abstract tech graphics, circuit boards, charts,
+  dashboards, metaphors, floating icons, text overlays, fake/generated logos, and
+  generic stock imagery. Leave natural negative space in one corner for the provided
+  brand logo to be placed later. For Hygaar-like businesses, prefer western dresses,
+  ethnic wear, sarees, kurtas, jewellery, beauty, home decor, accessories, fabric
+  texture, drape, fit, styling, PDP/catalog needs, or behind-the-scenes product shoot
+  setups.
 - A "cta_link": the single most relevant URL to include (usually the website) or null.
 
 Return JSON exactly like:
@@ -130,13 +137,15 @@ def generate_post(
     if isinstance(link, str) and link.lower() in ("null", "none", ""):
         link = business.website
 
+    image_prompt = _product_image_prompt(data.get("image_prompt"), business)
+
     return GeneratedPost(
         theme=data.get("theme", theme),
         hook=data.get("hook", "").strip(),
         body=data.get("body", "").strip(),
         hashtags=hashtags,
         link=link,
-        image_prompt=data.get("image_prompt"),
+        image_prompt=image_prompt,
     )
 
 
@@ -185,3 +194,32 @@ def _normalize_hashtags(tags: list, defaults: list[str]) -> list[str]:
             seen.add(key)
             out.append(t)
     return out[:10]
+
+
+def _product_image_prompt(prompt: object, business: BusinessProfile) -> str:
+    raw = prompt.strip() if isinstance(prompt, str) else ""
+    if not raw:
+        raw = (
+            "A premium ecommerce product photo featuring styled apparel, accessories, "
+            "or home/beauty products in a realistic campaign setup."
+        )
+    context = " ".join(
+        part
+        for part in [
+            business.sector or "",
+            business.product_info or "",
+            " ".join(business.content_themes),
+        ]
+        if part
+    )
+    return (
+        f"{raw}\n\n"
+        "Hard image requirements: create a concrete, realistic ecommerce/fashion "
+        "visual with actual products, garments, models, styling details, fabric "
+        "texture, or catalog/PDP context. Do not create abstract circuit boards, "
+        "tech diagrams, dashboards, charts, floating icons, text overlays, fake logos, "
+        "or metaphor-only visuals. Leave subtle clean space in a corner for the real "
+        "brand logo to be added after generation. Avoid overusing sneakers; rotate through western "
+        "dresses, ethnic wear, sarees, kurtas, jewellery, beauty, home decor, bags, "
+        f"watches, and accessories where relevant. Business context: {context[:900]}"
+    )

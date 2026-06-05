@@ -173,6 +173,9 @@ def save_profile(
     anthropic_api_key: str = Form(""),
     hygaar_base_url: str = Form(""),
     hygaar_api_token: str = Form(""),
+    brand_logo_path: str = Form(""),
+    brand_logo_position: str = Form("bottom-right"),
+    text_platform_image_rate: str = Form("0.5"),
     goals: str = Form(""),
     context_repo: str = Form(""),
     posting_style: str = Form("thought_leader"),
@@ -188,6 +191,9 @@ def save_profile(
             "anthropic_api_key": anthropic_api_key,
             "hygaar_base_url": hygaar_base_url,
             "hygaar_api_token": hygaar_api_token,
+            "brand_logo_path": brand_logo_path,
+            "brand_logo_position": brand_logo_position,
+            "text_platform_image_rate": text_platform_image_rate,
         }.items() if v
     }
 

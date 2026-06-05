@@ -57,13 +57,16 @@ def generate_image_gemini(
     api_key: Optional[str],
     model: str = "gemini-2.5-flash-image",
     out_dir: Path,
+    logo_path: Optional[str] = None,
+    logo_position: str = "bottom-right",
 ) -> GeneratedMedia:
     from google import genai
 
     client = genai.Client(api_key=api_key)
     full_prompt = (
         f"{prompt}\n\nStyle: clean, professional, social-media ready, "
-        f"no text, no watermark, no logo. Aspect ratio roughly 1:1."
+        f"no text, no watermark, no fake logo. Leave clean corner space for "
+        f"the provided brand logo. Aspect ratio roughly 1:1."
     )
     resp = client.models.generate_content(model=model, contents=[full_prompt])
 
@@ -74,6 +77,7 @@ def generate_image_gemini(
         inline = getattr(part, "inline_data", None)
         if inline is not None and getattr(inline, "data", None):
             path.write_bytes(inline.data)
+            _apply_logo_overlay(path, logo_path=logo_path, position=logo_position)
             return GeneratedMedia(
                 kind="image",
                 local_path=str(path),
@@ -81,6 +85,41 @@ def generate_image_gemini(
                 prompt=prompt,
             )
     raise RuntimeError("Gemini returned no image data for the prompt.")
+
+
+def _apply_logo_overlay(
+    image_path: Path,
+    *,
+    logo_path: Optional[str],
+    position: str = "bottom-right",
+    max_width_ratio: float = 0.14,
+    opacity: float = 0.86,
+) -> None:
+    if not logo_path:
+        return
+    logo_file = Path(logo_path).expanduser()
+    if not logo_file.is_file():
+        logger.warning("Brand logo not found for overlay: %s", logo_file)
+        return
+    try:
+        from PIL import Image
+
+        with Image.open(image_path).convert("RGBA") as base:
+            with Image.open(logo_file).convert("RGBA") as logo:
+                max_w = max(48, int(base.width * max_width_ratio))
+                scale = min(1.0, max_w / max(1, logo.width))
+                size = (max(1, int(logo.width * scale)), max(1, int(logo.height * scale)))
+                logo = logo.resize(size, Image.LANCZOS)
+                if opacity < 1:
+                    alpha = logo.getchannel("A").point(lambda p: int(p * opacity))
+                    logo.putalpha(alpha)
+                margin = max(24, int(base.width * 0.035))
+                x = margin if "left" in position else base.width - logo.width - margin
+                y = margin if "top" in position else base.height - logo.height - margin
+                base.alpha_composite(logo, (x, y))
+                base.convert("RGB").save(image_path)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Brand logo overlay failed for %s: %s", image_path, e)
 
 
 # ----------------------------------------------------------------------
@@ -123,7 +162,14 @@ class HygaarClient:
     def _headers(self) -> dict:
         return {"X-API-Key": self.api_key, "Content-Type": "application/json"}
 
-    def generate_image(self, prompt: str, out_dir: Path) -> GeneratedMedia:
+    def generate_image(
+        self,
+        prompt: str,
+        out_dir: Path,
+        *,
+        logo_path: Optional[str] = None,
+        logo_position: str = "bottom-right",
+    ) -> GeneratedMedia:
         payload = {"prompt": prompt, "count": 1, **self.payload_extra}
         resp = requests.post(
             f"{self.base_url}{self.image_endpoint}",
@@ -133,7 +179,13 @@ class HygaarClient:
         )
         resp.raise_for_status()
         image_url = self._await_asset(resp.json(), kind="image")
-        return self._download(image_url, out_dir, kind="image")
+        media = self._download(image_url, out_dir, kind="image")
+        _apply_logo_overlay(
+            Path(media.local_path),
+            logo_path=logo_path,
+            position=logo_position,
+        )
+        return media
 
     def generate_video(self, prompt: str, out_dir: Path) -> GeneratedMedia:
         payload = {"prompt": prompt, **self.payload_extra}

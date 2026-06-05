@@ -73,6 +73,8 @@ def build_agent_for_user(user: User) -> Agent | None:
         video_provider=profile_row.video_provider,
         hygaar_base_url=providers.get("hygaar_base_url"),
         hygaar_api_token=providers.get("hygaar_api_token"),
+        brand_logo_path=providers.get("brand_logo_path"),
+        brand_logo_position=providers.get("brand_logo_position", "bottom-right"),
         attach_image=user.attach_image,
         dry_run=user.dry_run,
         data_dir=data_dir,
@@ -82,6 +84,7 @@ def build_agent_for_user(user: User) -> Agent | None:
         enable_engagement=user.enable_engagement,
         engagement_delay_minutes=user.engagement_delay_minutes,
         engagement_max_comments=user.engagement_max_comments,
+        text_platform_image_rate=float(providers.get("text_platform_image_rate", 0.5)),
     )
     if profile_row.goals.strip():
         data_dir.mkdir(parents=True, exist_ok=True)

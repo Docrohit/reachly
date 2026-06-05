@@ -13,6 +13,7 @@ SaaS server (which builds the same inputs from its database).
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -52,6 +53,8 @@ class AgentSettings:
     video_provider: str = "none"          # hygaar | none
     hygaar_base_url: Optional[str] = None
     hygaar_api_token: Optional[str] = None
+    brand_logo_path: Optional[str] = None
+    brand_logo_position: str = "bottom-right"
 
     attach_image: bool = True
     dry_run: bool = True
@@ -64,6 +67,7 @@ class AgentSettings:
     enable_engagement: bool = False
     engagement_delay_minutes: int = 30
     engagement_max_comments: int = 3
+    text_platform_image_rate: float = 0.5
 
 
 class Agent:
@@ -117,6 +121,8 @@ class Agent:
             video_provider=cfg.video_provider,
             hygaar_base_url=cfg.hygaar_base_url,
             hygaar_api_token=cfg.hygaar_api_token,
+            brand_logo_path=cfg.brand_logo_path,
+            brand_logo_position=cfg.brand_logo_position,
             attach_image=cfg.attach_image,
             dry_run=cfg.dry_run,
             data_dir=cfg.data_dir,
@@ -128,6 +134,7 @@ class Agent:
             enable_engagement=cfg.enable_engagement,
             engagement_delay_minutes=cfg.engagement_delay_minutes,
             engagement_max_comments=cfg.engagement_max_comments,
+            text_platform_image_rate=cfg.text_platform_image_rate,
         )
         return cls(cfg.business, cfg.platforms, settings)
 
@@ -159,10 +166,17 @@ class Agent:
                 api_key=self.settings.gemini_api_key,
                 model=self.settings.gemini_image_model,
                 out_dir=media_dir,
+                logo_path=self.settings.brand_logo_path,
+                logo_position=self.settings.brand_logo_position,
             )
         if self.settings.image_provider == "hygaar":
             client = HygaarClient(self.settings.hygaar_base_url, self.settings.hygaar_api_token)
-            return client.generate_image(prompt, media_dir)
+            return client.generate_image(
+                prompt,
+                media_dir,
+                logo_path=self.settings.brand_logo_path,
+                logo_position=self.settings.brand_logo_position,
+            )
         return None
 
     # ------------------------------------------------------------------
@@ -318,7 +332,8 @@ class Agent:
                 public_media_base_url=self.settings.public_media_base_url,
             )
             logger.info("Posting to %s (%s) ...", platform.value, creds.mode.value)
-            result = poster.post(post)
+            publish_post = self._post_for_platform(post, platform)
+            result = poster.post(publish_post)
             results[platform] = result
             self.history.record(
                 theme=post.theme,
@@ -335,6 +350,23 @@ class Agent:
                 logger.error("✗ %s failed: %s", platform.value, result.error)
 
         return results
+
+    def _post_for_platform(self, post: GeneratedPost, platform: Platform) -> GeneratedPost:
+        if platform == Platform.instagram or not post.media:
+            return post
+        if self._use_media_on_text_platform(post):
+            return post
+        return post.model_copy(update={"media": None})
+
+    def _use_media_on_text_platform(self, post: GeneratedPost) -> bool:
+        rate = max(0.0, min(1.0, self.settings.text_platform_image_rate))
+        if rate >= 1:
+            return True
+        if rate <= 0:
+            return False
+        key = f"{post.theme}|{post.hook}".encode("utf-8")
+        bucket = int(hashlib.sha256(key).hexdigest()[:8], 16) % 100
+        return bucket < int(rate * 100)
 
     def analytics_review(self) -> str:
         """Return the recent performance context used by the writer."""

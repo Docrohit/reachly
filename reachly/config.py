@@ -67,6 +67,8 @@ class AgentConfig:
         self.video_provider = (env.get("VIDEO_PROVIDER") or "none").lower()
         self.hygaar_base_url = env.get("HYGAAR_BASE_URL") or None
         self.hygaar_api_token = env.get("HYGAAR_API_TOKEN") or None
+        self.brand_logo_path = env.get("BRAND_LOGO_PATH") or None
+        self.brand_logo_position = env.get("BRAND_LOGO_POSITION") or "bottom-right"
 
         # Behaviour
         self.attach_image = (env.get("ATTACH_IMAGE") or "yes").lower() in ("1", "yes", "true")
@@ -89,6 +91,7 @@ class AgentConfig:
         ).lower() in ("1", "yes", "true")
         self.engagement_delay_minutes = int(env.get("REACHLY_ENGAGEMENT_DELAY_MINUTES") or "30")
         self.engagement_max_comments = int(env.get("REACHLY_ENGAGEMENT_MAX_COMMENTS") or "3")
+        self.text_platform_image_rate = float(env.get("REACHLY_TEXT_PLATFORM_IMAGE_RATE") or "0.5")
 
         self.data_dir = Path(env.get("DATA_DIR") or "./.reachly_data").expanduser()
         self.data_dir.mkdir(parents=True, exist_ok=True)
