@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from reachly.models import Platform, PlatformCredentials, PlatformMode
+import requests
+
+from reachly.models import GeneratedMedia, GeneratedPost, Platform, PlatformCredentials, PlatformMode
 from reachly.platforms.twitter import TwitterApiPoster
 
 
@@ -139,6 +141,60 @@ class TwitterApiTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["json"]["media_category"], "tweet_image")
         self.assertEqual(calls[1][0], "https://api.x.com/2/media/upload/123/append")
         self.assertEqual(calls[2][0], "https://api.x.com/2/media/upload/123/finalize")
+
+    def test_media_upload_payment_error_falls_back_to_text_only_tweet(self):
+        calls = []
+
+        class Response:
+            def __init__(self, status_code, payload=None, text=""):
+                self.status_code = status_code
+                self._payload = payload or {}
+                self.text = text
+
+            def json(self):
+                return self._payload
+
+            def raise_for_status(self):
+                if self.status_code >= 300:
+                    error = requests.HTTPError(f"{self.status_code} error")
+                    error.response = self
+                    raise error
+
+        def fake_post(url, **kwargs):
+            calls.append((url, kwargs))
+            if url.endswith("/initialize"):
+                return Response(200, {"data": {"id": "123"}})
+            if url.endswith("/append"):
+                return Response(402, text="Payment Required")
+            if url.endswith("/tweets"):
+                return Response(201, {"data": {"id": "tweet-123"}})
+            return Response(200)
+
+        creds = PlatformCredentials(
+            platform=Platform.twitter,
+            mode=PlatformMode.api,
+            api_token="token",
+        )
+        post = GeneratedPost(
+            theme="fashion catalog automation",
+            hook="Catalog consistency used to be a luxury",
+            body="Fashion teams can now create on-brand PDP and campaign visuals faster.",
+            hashtags=["#fashiontech"],
+            media=GeneratedMedia(kind="image", local_path=""),
+        )
+        poster = TwitterApiPoster(creds)
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "image.png"
+            image.write_bytes(b"png")
+            post.media.local_path = str(image)
+            with patch("reachly.platforms.twitter.requests.post", side_effect=fake_post):
+                result = poster.post(post)
+
+        tweet_calls = [call for call in calls if call[0].endswith("/tweets")]
+        self.assertTrue(result.ok)
+        self.assertEqual(result.permalink, "https://x.com/i/web/status/tweet-123")
+        self.assertEqual(len(tweet_calls), 1)
+        self.assertNotIn("media", tweet_calls[0][1]["json"])
 
 
 if __name__ == "__main__":

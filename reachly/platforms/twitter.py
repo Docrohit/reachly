@@ -57,7 +57,13 @@ class TwitterApiPoster(Poster):
         try:
             media_ids = []
             if post.media and post.media.kind == "image":
-                media_ids.append(self._upload_image(post.media.local_path))
+                try:
+                    media_ids.append(self._upload_image(post.media.local_path))
+                except requests.HTTPError as e:
+                    logger.warning(
+                        "X media upload failed; publishing text-only fallback: %s",
+                        _response_summary(e.response),
+                    )
 
             payload: dict = {"text": post.for_platform(Platform.twitter)}
             if media_ids:
@@ -167,6 +173,12 @@ class TwitterApiPoster(Poster):
 
 def _percent_encode(value: str) -> str:
     return quote(str(value), safe="~-._")
+
+
+def _response_summary(response: requests.Response | None) -> str:
+    if response is None:
+        return "no response"
+    return f"{response.status_code} {response.text[:200]}"
 
 
 class TwitterBrowserPoster(Poster):
