@@ -105,7 +105,8 @@ def _apply_logo_overlay(
         from PIL import Image
 
         with Image.open(image_path).convert("RGBA") as base:
-            with Image.open(logo_file).convert("RGBA") as logo:
+            with Image.open(logo_file) as raw_logo:
+                logo = _logo_with_transparency(raw_logo)
                 max_w = max(48, int(base.width * max_width_ratio))
                 scale = min(1.0, max_w / max(1, logo.width))
                 size = (max(1, int(logo.width * scale)), max(1, int(logo.height * scale)))
@@ -120,6 +121,39 @@ def _apply_logo_overlay(
                 base.convert("RGB").save(image_path)
     except Exception as e:  # noqa: BLE001
         logger.warning("Brand logo overlay failed for %s: %s", image_path, e)
+
+
+def _logo_with_transparency(image):
+    """Convert common white-background logo exports into transparent overlays."""
+    from PIL import Image
+
+    logo = image.convert("RGBA")
+    if image.mode in ("RGBA", "LA") and logo.getchannel("A").getextrema()[0] < 255:
+        return logo
+
+    pixels = logo.load()
+    width, height = logo.size
+    corners = [
+        pixels[0, 0][:3],
+        pixels[width - 1, 0][:3],
+        pixels[0, height - 1][:3],
+        pixels[width - 1, height - 1][:3],
+    ]
+    if not all(min(corner) >= 235 for corner in corners):
+        return logo
+
+    data = []
+    for r, g, b, a in logo.getdata():
+        whiteness = min(r, g, b)
+        if whiteness >= 252:
+            data.append((r, g, b, 0))
+        elif whiteness >= 235 and max(r, g, b) - min(r, g, b) <= 24:
+            alpha = int((252 - whiteness) / 17 * a)
+            data.append((r, g, b, max(0, min(a, alpha))))
+        else:
+            data.append((r, g, b, a))
+    logo.putdata(data)
+    return logo
 
 
 # ----------------------------------------------------------------------

@@ -22,6 +22,23 @@ class MediaBrandingTests(unittest.TestCase):
             with Image.open(image).convert("RGB") as result:
                 self.assertNotEqual(result.getpixel((260, 260)), (255, 255, 255))
 
+    def test_white_logo_background_is_removed_before_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "image.png"
+            logo = Path(tmp) / "logo.jpg"
+            Image.new("RGB", (300, 300), (20, 30, 40)).save(image)
+            logo_img = Image.new("RGB", (100, 100), "white")
+            for x in range(30, 70):
+                for y in range(30, 70):
+                    logo_img.putpixel((x, y), (80, 70, 240))
+            logo_img.save(logo, quality=95)
+
+            _apply_logo_overlay(image, logo_path=str(logo), position="bottom-right", opacity=1)
+
+            with Image.open(image).convert("RGB") as result:
+                self.assertEqual(result.getpixel((232, 232)), (20, 30, 40))
+                self.assertNotEqual(result.getpixel((256, 256)), (20, 30, 40))
+
     def test_text_platform_media_reuse_rate_is_respected(self):
         with tempfile.TemporaryDirectory() as tmp:
             post = GeneratedPost(
