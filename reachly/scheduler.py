@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
 
 from .agent import Agent
 from .models import Platform
@@ -39,13 +38,7 @@ def run_daily(
                     run_at = datetime.now(ZoneInfo(timezone)) + timedelta(
                         minutes=agent.settings.engagement_delay_minutes
                     )
-                    sched.add_job(
-                        _engagement_job,
-                        DateTrigger(run_date=run_at, timezone=timezone),
-                        id=f"linkedin-engagement-{slot}-{run_at.isoformat()}",
-                        max_instances=1,
-                        misfire_grace_time=900,
-                    )
+                    agent.schedule_linkedin_engagement(run_at)
                     logger.info(
                         "Scheduled LinkedIn engagement follow-up for %s (%s).",
                         run_at.isoformat(),
@@ -66,14 +59,23 @@ def run_daily(
         )
 
     def _engagement_job():
-        logger.info("LinkedIn engagement follow-up started.")
         try:
-            count = agent.engage_after_linkedin_post()
-            logger.info("LinkedIn engagement follow-up complete: %s comments.", count)
+            count = agent.run_due_engagement()
+            if count:
+                logger.info("LinkedIn engagement follow-up complete: %s comments.", count)
         except Exception as e:  # noqa: BLE001
             message = f"LinkedIn engagement follow-up failed: {e}"
             logger.exception(message)
             agent.history.record_event(platform="linkedin", ok=False, error=message)
+
+    sched.add_job(
+        _engagement_job,
+        CronTrigger(minute="*", timezone=timezone),
+        id="linkedin-engagement-due-check",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=900,
+    )
 
     for pt in instagram_times:
         h, m = (int(x) for x in pt.strip().split(":"))

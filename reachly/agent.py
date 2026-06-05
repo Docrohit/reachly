@@ -169,6 +169,9 @@ class Agent:
     def _pending_path(self) -> Path:
         return self.settings.data_dir / "pending_instagram_post.json"
 
+    def _engagement_pending_path(self) -> Path:
+        return self.settings.data_dir / "pending_linkedin_engagement.json"
+
     def _save_pending(self, post: GeneratedPost) -> None:
         payload = post.model_dump(mode="json")
         payload["_saved_at"] = datetime.utcnow().isoformat()
@@ -188,6 +191,38 @@ class Agent:
             return GeneratedPost.model_validate(data)
         except Exception:  # noqa: BLE001
             return None
+
+    def schedule_linkedin_engagement(self, run_at: datetime, post: Optional[GeneratedPost] = None) -> None:
+        post = post or self._last_linkedin_post or self._load_pending(max_age_minutes=240)
+        if not post:
+            logger.info("Engagement follow-up not scheduled: no LinkedIn post snapshot.")
+            return
+        payload = post.model_dump(mode="json")
+        payload["_run_at"] = run_at.isoformat()
+        payload["_saved_at"] = datetime.utcnow().isoformat()
+        tmp = self._engagement_pending_path().with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(self._engagement_pending_path())
+        logger.info("Persisted LinkedIn engagement follow-up for %s.", run_at.isoformat())
+
+    def run_due_engagement(self, now: Optional[datetime] = None) -> int:
+        path = self._engagement_pending_path()
+        if not path.is_file():
+            return 0
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            run_at = datetime.fromisoformat(data.pop("_run_at"))
+            data.pop("_saved_at", None)
+            current = now or (datetime.now(run_at.tzinfo) if run_at.tzinfo else datetime.utcnow())
+            if current < run_at:
+                return 0
+            self._last_linkedin_post = GeneratedPost.model_validate(data)
+            count = self.engage_after_linkedin_post()
+            path.unlink(missing_ok=True)
+            return count
+        except Exception:
+            logger.exception("LinkedIn engagement follow-up failed.")
+            return 0
 
     def _ensure_image(self, post: GeneratedPost) -> GeneratedPost:
         if post.media and post.media.local_path:
