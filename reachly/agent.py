@@ -133,6 +133,8 @@ class Agent:
             self.business,
             theme=theme,
             recent_hooks=self.history.recent_hooks(),
+            performance_context=self.history.analytics_summary(days=14, limit=12),
+            newness_context=self.history.newness_summary(limit_per_platform=3),
             strategy=self._strategy,
         )
         if self.settings.attach_image and post.image_prompt:
@@ -285,6 +287,14 @@ class Agent:
                 logger.error("✗ %s failed: %s", platform.value, result.error)
 
         return results
+
+    def analytics_review(self) -> str:
+        """Return the recent performance context used by the writer."""
+        review = self.history.analytics_summary(days=14, limit=24)
+        newness = self.history.newness_summary(limit_per_platform=3)
+        if newness:
+            return review + "\n\nRecent posts to avoid repeating:\n" + newness
+        return review
 
     def close(self) -> None:
         self.history.close()

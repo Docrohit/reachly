@@ -23,11 +23,20 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="reachly", description="Reachly thought-leadership agent")
     parser.add_argument(
         "command",
-        choices=["once", "run", "preview", "instagram", "twitter"],
-        help="once=all enabled | instagram=IG test | twitter=X test | run=scheduler | preview=dry-run",
+        choices=["once", "run", "preview", "instagram", "twitter", "analytics"],
+        help=(
+            "once=all enabled | instagram=IG test | twitter=X test | "
+            "analytics=print recent performance context | run=scheduler | preview=dry-run"
+        ),
     )
     parser.add_argument("--theme", default=None, help="override today's theme")
     parser.add_argument("--env", default=".env", help="path to .env file")
+    parser.add_argument("--post-id", type=int, default=None, help="post id for analytics updates")
+    parser.add_argument("--impressions", type=int, default=None, help="analytics impressions")
+    parser.add_argument("--likes", type=int, default=None, help="analytics likes/reactions")
+    parser.add_argument("--comments", type=int, default=None, help="analytics comments")
+    parser.add_argument("--shares", type=int, default=None, help="analytics shares/reposts")
+    parser.add_argument("--note", default=None, help="qualitative analytics note")
     args = parser.parse_args(argv)
 
     cfg = AgentConfig.from_env_file(args.env)
@@ -59,6 +68,21 @@ def main(argv=None) -> int:
 
     if args.command == "twitter":
         agent.run_once(theme=args.theme, platforms=[Platform.twitter])
+        agent.close()
+        return 0
+
+    if args.command == "analytics":
+        if args.post_id is not None:
+            agent.history.record_analytics(
+                args.post_id,
+                impressions=args.impressions,
+                likes=args.likes,
+                comments=args.comments,
+                shares=args.shares,
+                note=args.note,
+            )
+            print(f"Updated analytics for post {args.post_id}.")
+        print(agent.analytics_review())
         agent.close()
         return 0
 

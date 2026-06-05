@@ -36,6 +36,7 @@ BUSINESS:
 
 TODAY'S THEME (write about this angle): {theme}
 {strategy_block}
+{performance_block}
 {recent_block}
 Requirements:
 - A scroll-stopping one-line "hook".
@@ -71,6 +72,8 @@ def generate_post(
     *,
     theme: Optional[str] = None,
     recent_hooks: Optional[list[str]] = None,
+    performance_context: Optional[str] = None,
+    newness_context: Optional[str] = None,
     strategy: Optional[StrategyContext] = None,
 ) -> GeneratedPost:
     theme = theme or pick_theme(business)
@@ -82,12 +85,28 @@ def generate_post(
             + joined
             + "\n"
         )
+    if newness_context:
+        recent_block += (
+            "\nLAST 3 POSTS BY PLATFORM (create a clearly different angle, example, "
+            "format, and opening from these):\n"
+            + newness_context.strip()
+            + "\n"
+        )
 
     strategy_block = ""
     if strategy:
         block = strategy.for_prompt()
         if block:
             strategy_block = "\nSTRATEGY & POSITIONING (follow closely):\n" + block + "\n"
+
+    performance_block = ""
+    if performance_context:
+        performance_block = (
+            "\nRECENT PERFORMANCE / ANALYTICS CONTEXT:\n"
+            + performance_context.strip()
+            + "\nUse this to improve today's idea: keep what earned engagement, "
+            "avoid what looked repetitive or weak, and choose one fresh insight.\n"
+        )
 
     prompt = USER_PROMPT_TEMPLATE.format(
         name=business.name,
@@ -100,6 +119,7 @@ def generate_post(
         theme=theme,
         brand_tags=" ".join(business.default_hashtags) or "(none)",
         strategy_block=strategy_block,
+        performance_block=performance_block,
         recent_block=recent_block,
     )
 
