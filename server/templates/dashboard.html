@@ -26,6 +26,15 @@
         <select name="dry_run"><option value="on" {{ 'selected' if user.dry_run }}>Dry run (preview only)</option>
         <option value="off" {{ 'selected' if not user.dry_run }}>Live (actually post)</option></select></div>
     </div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <div><label>LinkedIn engagement follow-up</label>
+        <select name="enable_engagement"><option value="off" {{ 'selected' if not user.enable_engagement }}>Off</option>
+        <option value="on" {{ 'selected' if user.enable_engagement }}>On</option></select></div>
+      <div><label>Engage after minutes</label>
+        <input name="engagement_delay_minutes" type="number" min="1" max="240" value="{{ user.engagement_delay_minutes }}"/></div>
+      <div><label>Max comments</label>
+        <input name="engagement_max_comments" type="number" min="1" max="5" value="{{ user.engagement_max_comments }}"/></div>
+    </div>
     <button class="btn primary" style="margin-top:14px" type="submit">Save schedule</button>
   </form>
   <div style="margin-top:14px">
@@ -135,6 +144,9 @@
       {% elif p=='linkedin' %}
         <label>Access token (API mode)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
         <label>Person URN (optional)</label><input name="person_urn" placeholder="urn:li:person:..."/>
+        <label>Company page name (feed composer fallback)</label><input name="post_as" placeholder="Exact page name, e.g. HyGaar"/>
+        <label>Company admin URL (browser mode preferred)</label>
+        <input name="company_admin_url" placeholder="https://www.linkedin.com/company/.../admin/"/>
         <div class="row">
           <div><label>Email (browser mode)</label><input name="email"/></div>
           <div><label>Password (browser mode)</label><input name="password" type="password"/></div>

@@ -28,6 +28,9 @@ class User(SQLModel, table=True):
     timezone: str = "UTC"
     attach_image: bool = True
     dry_run: bool = True               # users start in dry-run until they confirm
+    enable_engagement: bool = False
+    engagement_delay_minutes: int = 30
+    engagement_max_comments: int = 3
 
 
 class BusinessProfileRow(SQLModel, table=True):
@@ -102,6 +105,16 @@ def _migrate_sqlite() -> None:
         for column, ddl in additions.items():
             if column not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE businessprofilerow ADD COLUMN {column} {ddl}")
+        user_rows = conn.exec_driver_sql("PRAGMA table_info(user)").fetchall()
+        user_existing = {row[1] for row in user_rows}
+        user_additions = {
+            "enable_engagement": "BOOLEAN NOT NULL DEFAULT 0",
+            "engagement_delay_minutes": "INTEGER NOT NULL DEFAULT 30",
+            "engagement_max_comments": "INTEGER NOT NULL DEFAULT 3",
+        }
+        for column, ddl in user_additions.items():
+            if column not in user_existing:
+                conn.exec_driver_sql(f"ALTER TABLE user ADD COLUMN {column} {ddl}")
 
 
 def get_session() -> Session:

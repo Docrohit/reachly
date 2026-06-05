@@ -140,6 +140,35 @@ def generate_post(
     )
 
 
+def generate_engagement_comment(
+    llm: LLMClient,
+    business: BusinessProfile,
+    *,
+    hashtag: str,
+    source_post_text: str,
+) -> str:
+    prompt = f"""Write one genuine LinkedIn comment for a post found under {hashtag}.
+
+Business context:
+- Name: {business.name}
+- Sector: {business.sector or "(unspecified)"}
+- Voice: {business.brand_voice}
+
+Post to respond to:
+{source_post_text[:1800]}
+
+Rules:
+- 1-2 sentences, under 220 characters.
+- Sound like a real operator adding value, not a bot.
+- Mention one specific idea from the post.
+- No pitch, no link, no hashtags, no emojis.
+- Do not say "great post" unless you add a specific reason.
+
+Return only the comment text."""
+    text = llm.generate(SYSTEM_PROMPT, prompt).strip()
+    return " ".join(text.split())[:260]
+
+
 def _normalize_hashtags(tags: list, defaults: list[str]) -> list[str]:
     out: list[str] = []
     seen = set()

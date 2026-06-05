@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -125,6 +127,7 @@ class LinkedInBrowserPoster(Poster):
     def post(self, post: GeneratedPost) -> PostResult:
         text = post.for_platform(Platform.linkedin)
         post_as = (self.creds.extra or {}).get("post_as", "").strip()
+        company_admin_url = (self.creds.extra or {}).get("company_admin_url", "").strip()
         try:
             with persistent_page("linkedin", self.data_dir) as page:
                 page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
@@ -133,13 +136,22 @@ class LinkedInBrowserPoster(Poster):
                         return self._fail("LinkedIn login failed (check credentials / 2FA).")
                     page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
 
-                if not self._open_composer(page):
+                if company_admin_url:
+                    if not self._open_company_admin_composer(page, company_admin_url):
+                        shot = save_debug_artifact(
+                            page, self.data_dir, "linkedin", "company_composer_not_found"
+                        )
+                        return self._fail(
+                            "LinkedIn company admin composer not found. "
+                            f"Check admin access and LINKEDIN_COMPANY_ADMIN_URL. Debug: {shot}"
+                        )
+                elif not self._open_composer(page):
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "composer_not_found")
                     return self._fail(f"LinkedIn composer button not found. Debug: {shot}")
                 page.wait_for_timeout(1500)
 
                 # Optionally switch the author to a Company Page before typing.
-                if post_as:
+                if post_as and not company_admin_url:
                     if not self._select_post_as(page, post_as):
                         return self._fail(
                             f"Could not select Company Page '{post_as}' in the composer "
@@ -172,6 +184,195 @@ class LinkedInBrowserPoster(Poster):
                 return self._ok()
         except Exception as e:  # noqa: BLE001
             return self._fail(f"LinkedIn browser error: {e}")
+
+    def engage_with_hashtags(
+        self,
+        hashtags: list[str],
+        *,
+        make_comment: Callable[[str, str], str],
+        max_comments: int = 3,
+    ) -> int:
+        clean_tags = []
+        for tag in hashtags:
+            clean = tag.strip().lstrip("#")
+            if clean and clean.lower() not in {t.lower() for t in clean_tags}:
+                clean_tags.append(clean)
+        if not clean_tags:
+            logger.info("LinkedIn engagement skipped: no hashtags.")
+            return 0
+
+        comments_done = 0
+        with persistent_page("linkedin", self.data_dir) as page:
+            page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
+            if "/login" in page.url or "/checkpoint" in page.url or "authwall" in page.url:
+                if not self._login(page):
+                    logger.warning("LinkedIn engagement skipped: login failed.")
+                    return 0
+
+            for tag in clean_tags:
+                if comments_done >= max_comments:
+                    break
+                url = f"https://www.linkedin.com/feed/hashtag/{quote(tag)}/"
+                page.goto(url, wait_until="domcontentloaded")
+                page.wait_for_timeout(3500)
+                updates = self._visible_updates(page)
+                for update in updates:
+                    if comments_done >= max_comments:
+                        break
+                    try:
+                        source_text = update.inner_text(timeout=3000).strip()
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if len(source_text) < 80:
+                        continue
+                    comment = make_comment(f"#{tag}", source_text)
+                    if not comment:
+                        continue
+                    if self._comment_on_update(page, update, comment):
+                        comments_done += 1
+                        logger.info("Commented on LinkedIn hashtag #%s.", tag)
+                        page.wait_for_timeout(2500)
+        return comments_done
+
+    def _visible_updates(self, page):
+        selectors = [
+            "div.feed-shared-update-v2",
+            "article",
+            "div[data-urn*='activity']",
+        ]
+        seen = set()
+        updates = []
+        for sel in selectors:
+            try:
+                for loc in page.locator(sel).all()[:8]:
+                    try:
+                        if not loc.is_visible():
+                            continue
+                        text = loc.inner_text(timeout=1500).strip()
+                        key = text[:120]
+                        if len(text) > 80 and key not in seen:
+                            seen.add(key)
+                            updates.append(loc)
+                    except Exception:  # noqa: BLE001
+                        continue
+            except Exception:  # noqa: BLE001
+                continue
+        return updates[:5]
+
+    def _comment_on_update(self, page, update, comment: str) -> bool:
+        try:
+            buttons = [
+                lambda: update.get_by_role("button", name=re.compile(r"comment", re.I)).first,
+                lambda: update.locator("button:has-text('Comment')").first,
+            ]
+            for build in buttons:
+                try:
+                    btn = build()
+                    if btn.count() and btn.is_visible():
+                        btn.click(timeout=8000)
+                        break
+                except Exception:  # noqa: BLE001
+                    continue
+            page.wait_for_timeout(1200)
+            editor = None
+            for sel in (
+                "div.ql-editor[contenteditable='true']",
+                "div[role='textbox'][contenteditable='true']",
+                "div[contenteditable='true']",
+            ):
+                try:
+                    loc = update.locator(sel).last
+                    if loc.count() and loc.is_visible():
+                        editor = loc
+                        break
+                except Exception:  # noqa: BLE001
+                    continue
+            if editor is None:
+                return False
+            editor.click()
+            editor.type(comment, delay=5)
+            page.wait_for_timeout(500)
+            for candidate in (
+                lambda: update.get_by_role("button", name=re.compile(r"^post$", re.I)).last,
+                lambda: update.locator("button:has-text('Post')").last,
+                lambda: page.get_by_role("button", name=re.compile(r"^post$", re.I)).last,
+            ):
+                try:
+                    btn = candidate()
+                    if btn.count() and btn.is_visible() and btn.is_enabled():
+                        btn.click(timeout=8000)
+                        return True
+                except Exception:  # noqa: BLE001
+                    continue
+        except Exception as e:  # noqa: BLE001
+            logger.warning("LinkedIn comment attempt failed: %s", e)
+        return False
+
+    def _open_company_admin_composer(self, page, admin_url: str) -> bool:
+        """Open the Company Page admin surface and start a post from there."""
+        page.goto(admin_url, wait_until="domcontentloaded")
+        page.wait_for_timeout(3500)
+        if "/login" in page.url or "/checkpoint" in page.url or "authwall" in page.url:
+            return False
+
+        if self._find_editor(page) is not None:
+            return True
+
+        try:
+            start_text = page.get_by_text(re.compile(r"^start a post$", re.I)).first
+            if start_text.count():
+                start_text.scroll_into_view_if_needed(timeout=5000)
+                start_text.click(timeout=8000, force=True)
+                page.wait_for_timeout(2500)
+                if self._find_editor(page) is not None:
+                    return True
+        except Exception:  # noqa: BLE001
+            pass
+
+        candidates = [
+            lambda: page.get_by_role("button", name=re.compile(r"create", re.I)).first,
+            lambda: page.get_by_role("button", name=re.compile(r"create.*post", re.I)).first,
+            lambda: page.get_by_role("link", name=re.compile(r"create.*post", re.I)).first,
+            lambda: page.get_by_role("button", name=re.compile(r"start a post", re.I)).first,
+            lambda: page.get_by_text(re.compile(r"start a post", re.I)).first,
+            lambda: page.locator("button:has-text('Create')").first,
+            lambda: page.locator("button:has-text('Start a post')").first,
+            lambda: page.locator("a:has-text('Create a post')").first,
+            lambda: page.locator("[data-control-name*='create' i]").first,
+        ]
+        for build in candidates:
+            try:
+                loc = build()
+                if loc.count() and loc.is_visible():
+                    try:
+                        loc.click(timeout=10000, force=True)
+                    except Exception:  # noqa: BLE001
+                        loc.evaluate("el => el.click()")
+                    page.wait_for_timeout(2500)
+                    if self._find_editor(page) is not None:
+                        return True
+                    # Some admin variants open a small menu after Create.
+                    menu_items = [
+                        lambda: page.get_by_role("menuitem", name=re.compile(r"start a post", re.I)).first,
+                        lambda: page.get_by_text(re.compile(r"^start a post$", re.I)).first,
+                        lambda: page.get_by_role("menuitem", name=re.compile(r"post", re.I)).first,
+                        lambda: page.get_by_role("button", name=re.compile(r"post", re.I)).first,
+                        lambda: page.get_by_text(re.compile(r"^post$", re.I)).first,
+                        lambda: page.get_by_text(re.compile(r"create a post", re.I)).first,
+                    ]
+                    for item_builder in menu_items:
+                        try:
+                            post_item = item_builder()
+                            if post_item.count() and post_item.is_visible():
+                                post_item.click(timeout=5000, force=True)
+                                page.wait_for_timeout(2500)
+                                if self._find_editor(page) is not None:
+                                    return True
+                        except Exception:  # noqa: BLE001
+                            continue
+            except Exception:  # noqa: BLE001
+                continue
+        return False
 
     def _open_composer(self, page) -> bool:
         for url in (

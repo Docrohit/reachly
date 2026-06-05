@@ -231,6 +231,8 @@ def save_platform(
     # linkedin
     access_token: str = Form(""),
     person_urn: str = Form(""),
+    post_as: str = Form(""),
+    company_admin_url: str = Form(""),
     ig_user_id: str = Form(""),
     email: str = Form(""),
     # shared
@@ -249,6 +251,8 @@ def save_platform(
             "login_identifier": login_identifier,
             "access_token": access_token,
             "person_urn": person_urn,
+            "post_as": post_as,
+            "company_admin_url": company_admin_url,
             "user_id": ig_user_id,
             "email": email,
             "username": username,
@@ -283,6 +287,9 @@ def save_settings(
     timezone: str = Form("UTC"),
     attach_image: str = Form("on"),
     dry_run: str = Form("off"),
+    enable_engagement: str = Form("off"),
+    engagement_delay_minutes: int = Form(30),
+    engagement_max_comments: int = Form(3),
 ):
     user = require_user(request)
     if not user:
@@ -292,6 +299,9 @@ def save_settings(
         u.post_time, u.timezone = post_time, timezone
         u.attach_image = attach_image == "on"
         u.dry_run = dry_run == "on"
+        u.enable_engagement = enable_engagement == "on"
+        u.engagement_delay_minutes = max(1, engagement_delay_minutes)
+        u.engagement_max_comments = max(1, min(5, engagement_max_comments))
         session.add(u)
         session.commit()
     return RedirectResponse("/dashboard", status_code=303)

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import AgentConfig
-from .content import generate_post, pick_theme
+from .content import generate_engagement_comment, generate_post, pick_theme
 from .context import load_strategy_context
 from .llm import LLMClient
 from .media import HygaarClient, generate_image_gemini
@@ -61,6 +61,9 @@ class AgentSettings:
     agents_md_path: Optional[str] = None
     product_theory_path: Optional[str] = None
     posting_style: str = "thought_leader"
+    enable_engagement: bool = False
+    engagement_delay_minutes: int = 30
+    engagement_max_comments: int = 3
 
 
 class Agent:
@@ -92,6 +95,7 @@ class Agent:
             product_theory_path=settings.product_theory_path,
             posting_style=settings.posting_style,
         )
+        self._last_linkedin_post: Optional[GeneratedPost] = None
         logger.info("Strategy context source: %s", self._strategy.source)
 
     @classmethod
@@ -121,6 +125,9 @@ class Agent:
             agents_md_path=cfg.agents_md_path,
             product_theory_path=cfg.product_theory_path,
             posting_style=style,
+            enable_engagement=cfg.enable_engagement,
+            engagement_delay_minutes=cfg.engagement_delay_minutes,
+            engagement_max_comments=cfg.engagement_max_comments,
         )
         return cls(cfg.business, cfg.platforms, settings)
 
@@ -200,7 +207,10 @@ class Agent:
         with self._run_lock:
             post = self.build_post(theme)
             self._save_pending(post)
-            return self._publish(post, platforms=[Platform.linkedin, Platform.twitter])
+            results = self._publish(post, platforms=[Platform.linkedin, Platform.twitter])
+            if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
+                self._last_linkedin_post = post
+            return results
 
     def run_instagram_slot(self) -> dict[Platform, PostResult]:
         """Post to Instagram using pending LinkedIn content + generated image."""
@@ -232,7 +242,10 @@ class Agent:
                 post = self._ensure_image(post)
             if platforms is None or Platform.linkedin in platforms:
                 self._save_pending(post)
-            return self._publish(post, platforms=platforms)
+            results = self._publish(post, platforms=platforms)
+            if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
+                self._last_linkedin_post = post
+            return results
 
     def _publish(
         self,
@@ -295,6 +308,39 @@ class Agent:
         if newness:
             return review + "\n\nRecent posts to avoid repeating:\n" + newness
         return review
+
+    def engage_after_linkedin_post(self) -> int:
+        """Find relevant hashtag conversations and leave a few genuine comments."""
+        post = self._last_linkedin_post or self._load_pending(max_age_minutes=240)
+        if not post:
+            logger.info("Engagement skipped: no recent LinkedIn post found.")
+            return 0
+        creds = self.platforms.get(Platform.linkedin)
+        if not creds or not creds.enabled:
+            logger.info("Engagement skipped: LinkedIn is disabled.")
+            return 0
+        poster = get_poster(
+            creds,
+            data_dir=self.settings.data_dir,
+            public_media_base_url=self.settings.public_media_base_url,
+        )
+        if not hasattr(poster, "engage_with_hashtags"):
+            logger.info("Engagement skipped: LinkedIn API engagement is not implemented.")
+            return 0
+
+        def _make_comment(hashtag: str, source_text: str) -> str:
+            return generate_engagement_comment(
+                self.llm,
+                self.business,
+                hashtag=hashtag,
+                source_post_text=source_text,
+            )
+
+        return poster.engage_with_hashtags(
+            post.hashtags,
+            make_comment=_make_comment,
+            max_comments=self.settings.engagement_max_comments,
+        )
 
     def close(self) -> None:
         self.history.close()

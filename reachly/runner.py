@@ -23,9 +23,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="reachly", description="Reachly thought-leadership agent")
     parser.add_argument(
         "command",
-        choices=["once", "run", "preview", "instagram", "twitter", "analytics"],
+        choices=["once", "run", "preview", "linkedin", "instagram", "twitter", "analytics", "engage"],
         help=(
-            "once=all enabled | instagram=IG test | twitter=X test | "
+            "once=all enabled | linkedin=LinkedIn only | instagram=IG test | twitter=X test | "
             "analytics=print recent performance context | run=scheduler | preview=dry-run"
         ),
     )
@@ -58,6 +58,11 @@ def main(argv=None) -> int:
         agent.close()
         return 0
 
+    if args.command == "linkedin":
+        agent.run_once(theme=args.theme, platforms=[Platform.linkedin])
+        agent.close()
+        return 0
+
     if args.command == "instagram":
         # Simulate the daily Instagram slot (pending post + image + IG only)
         if args.theme:
@@ -68,6 +73,12 @@ def main(argv=None) -> int:
 
     if args.command == "twitter":
         agent.run_once(theme=args.theme, platforms=[Platform.twitter])
+        agent.close()
+        return 0
+
+    if args.command == "engage":
+        count = agent.engage_after_linkedin_post()
+        print(f"LinkedIn engagement comments posted: {count}")
         agent.close()
         return 0
 

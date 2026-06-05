@@ -7,6 +7,7 @@ arrived.
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -78,6 +79,9 @@ def build_agent_for_user(user: User) -> Agent | None:
         public_media_base_url=settings.public_media_url,
         context_repo=profile_row.context_repo,
         posting_style=profile_row.posting_style,
+        enable_engagement=user.enable_engagement,
+        engagement_delay_minutes=user.engagement_delay_minutes,
+        engagement_max_comments=user.engagement_max_comments,
     )
     if profile_row.goals.strip():
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -106,7 +110,11 @@ def _creds_from_secrets(platform: Platform, mode: PlatformMode, s: dict) -> Plat
         return PlatformCredentials(
             platform=platform, mode=mode,
             api_token=s.get("access_token"),
-            extra={"person_urn": s.get("person_urn", "")},
+            extra={
+                "person_urn": s.get("person_urn", ""),
+                "post_as": s.get("post_as", ""),
+                "company_admin_url": s.get("company_admin_url", ""),
+            },
             username=s.get("email"), password=s.get("password"),
         )
     if platform == Platform.instagram:
@@ -132,6 +140,10 @@ def run_user_now(user_id: int, theme: str | None = None) -> dict:
         return {"error": "no business profile configured"}
 
     results = agent.run_once(theme=theme)
+    if user.enable_engagement and results.get(Platform.linkedin) and results[Platform.linkedin].ok:
+        delay = max(1, user.engagement_delay_minutes) * 60
+        threading.Timer(delay, _run_user_engagement, args=(user_id,)).start()
+        logger.info("Scheduled hosted LinkedIn engagement for user %s in %ss.", user_id, delay)
     agent.close()
 
     with get_session() as session:
@@ -147,6 +159,23 @@ def run_user_now(user_id: int, theme: str | None = None) -> dict:
             )
         session.commit()
     return {p.value: {"ok": r.ok, "permalink": r.permalink, "error": r.error} for p, r in results.items()}
+
+
+def _run_user_engagement(user_id: int) -> None:
+    with get_session() as session:
+        user = session.get(User, user_id)
+    if not user or not user.is_active or not user.enable_engagement:
+        return
+    agent = build_agent_for_user(user)
+    if not agent:
+        return
+    try:
+        count = agent.engage_after_linkedin_post()
+        logger.info("Hosted LinkedIn engagement for user %s posted %s comments.", user_id, count)
+    except Exception:  # noqa: BLE001
+        logger.exception("Hosted LinkedIn engagement failed for user %s.", user_id)
+    finally:
+        agent.close()
 
 
 # ---- scheduling -------------------------------------------------------

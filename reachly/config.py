@@ -84,6 +84,11 @@ class AgentConfig:
         self.posting_style = env.get("REACHLY_POSTING_STYLE") or "thought_leader"
         self.dashboard_token = env.get("REACHLY_DASHBOARD_TOKEN") or None
         self.dashboard_port = int(env.get("REACHLY_DASHBOARD_PORT") or "8765")
+        self.enable_engagement = (
+            env.get("REACHLY_ENABLE_ENGAGEMENT") or "no"
+        ).lower() in ("1", "yes", "true")
+        self.engagement_delay_minutes = int(env.get("REACHLY_ENGAGEMENT_DELAY_MINUTES") or "30")
+        self.engagement_max_comments = int(env.get("REACHLY_ENGAGEMENT_MAX_COMMENTS") or "3")
 
         self.data_dir = Path(env.get("DATA_DIR") or "./.reachly_data").expanduser()
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -111,6 +116,9 @@ class AgentConfig:
                 # Browser mode: post as this Company Page (exact name) instead of
                 # your personal profile. Leave blank to post as yourself.
                 "post_as": env.get("LINKEDIN_POST_AS", ""),
+                # Browser mode: open the company admin URL directly and create
+                # from that surface. Preferred over the generic feed composer.
+                "company_admin_url": env.get("LINKEDIN_COMPANY_ADMIN_URL", ""),
                 # API mode: organization id to post as a Page (uses w_organization_social).
                 "organization_id": env.get("LINKEDIN_ORGANIZATION_ID", ""),
             },
