@@ -1,3 +1,4 @@
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +24,25 @@ class TwitterApiTests(unittest.TestCase):
         creds = cfg.platforms[Platform.twitter]
         self.assertEqual(creds.extra["login_identifier"], "rohitsharma@hygaar.com")
 
+    def test_standalone_config_maps_x_oauth1_credentials(self):
+        from reachly.config import AgentConfig
+
+        cfg = AgentConfig(
+            {
+                "TWITTER_MODE": "api",
+                "TWITTER_CONSUMER_KEY": "consumer-key",
+                "TWITTER_CONSUMER_SECRET": "consumer-secret",
+                "TWITTER_ACCESS_TOKEN": "access-token",
+                "TWITTER_ACCESS_TOKEN_SECRET": "access-secret",
+            }
+        )
+
+        creds = cfg.platforms[Platform.twitter]
+        self.assertEqual(creds.extra["consumer_key"], "consumer-key")
+        self.assertEqual(creds.extra["consumer_secret"], "consumer-secret")
+        self.assertEqual(creds.extra["access_token"], "access-token")
+        self.assertEqual(creds.extra["access_token_secret"], "access-secret")
+
     def test_saas_orchestrator_maps_x_login_identifier(self):
         from server.orchestrator import _creds_from_secrets
 
@@ -37,6 +57,49 @@ class TwitterApiTests(unittest.TestCase):
         )
 
         self.assertEqual(creds.extra["login_identifier"], "rohitsharma@hygaar.com")
+
+    def test_saas_orchestrator_maps_x_oauth1_credentials(self):
+        from server.orchestrator import _creds_from_secrets
+
+        creds = _creds_from_secrets(
+            Platform.twitter,
+            PlatformMode.api,
+            {
+                "consumer_key": "consumer-key",
+                "consumer_secret": "consumer-secret",
+                "access_token": "access-token",
+                "access_token_secret": "access-secret",
+            },
+        )
+
+        self.assertEqual(creds.extra["consumer_key"], "consumer-key")
+        self.assertEqual(creds.extra["consumer_secret"], "consumer-secret")
+        self.assertEqual(creds.extra["access_token"], "access-token")
+        self.assertEqual(creds.extra["access_token_secret"], "access-secret")
+
+    def test_oauth1_header_is_used_when_token_pair_is_present(self):
+        creds = PlatformCredentials(
+            platform=Platform.twitter,
+            mode=PlatformMode.api,
+            extra={
+                "consumer_key": "consumer-key",
+                "consumer_secret": "consumer-secret",
+                "access_token": "access-token",
+                "access_token_secret": "access-secret",
+            },
+        )
+
+        poster = TwitterApiPoster(creds)
+        with patch("reachly.platforms.twitter.secrets.token_urlsafe", return_value="nonce"):
+            with patch("reachly.platforms.twitter.time.time", return_value=1710000000):
+                headers = poster._headers("POST", "https://api.x.com/2/tweets")
+
+        auth = headers["Authorization"]
+        self.assertTrue(auth.startswith("OAuth "))
+        self.assertIn('oauth_consumer_key="consumer-key"', auth)
+        self.assertIn('oauth_token="access-token"', auth)
+        self.assertIn('oauth_signature_method="HMAC-SHA1"', auth)
+        self.assertRegex(auth, re.compile(r'oauth_signature="[^"]+"'))
 
     def test_image_upload_uses_current_v2_media_endpoints(self):
         calls = []

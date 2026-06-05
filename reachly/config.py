@@ -102,7 +102,13 @@ class AgentConfig:
             platform=Platform.twitter,
             mode=PlatformMode(env.get("TWITTER_MODE", "off")),
             api_token=env.get("TWITTER_OAUTH2_TOKEN") or None,
-            extra={"login_identifier": env.get("TWITTER_LOGIN_IDENTIFIER", "")},
+            extra={
+                "login_identifier": env.get("TWITTER_LOGIN_IDENTIFIER", ""),
+                "consumer_key": env.get("TWITTER_CONSUMER_KEY", ""),
+                "consumer_secret": env.get("TWITTER_CONSUMER_SECRET", ""),
+                "access_token": env.get("TWITTER_ACCESS_TOKEN", ""),
+                "access_token_secret": env.get("TWITTER_ACCESS_TOKEN_SECRET", ""),
+            },
             username=env.get("TWITTER_USERNAME") or None,
             password=env.get("TWITTER_PASSWORD") or None,
         )

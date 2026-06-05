@@ -227,6 +227,10 @@ def save_platform(
     mode: str = Form("off"),
     # twitter
     oauth2_token: str = Form(""),
+    consumer_key: str = Form(""),
+    consumer_secret: str = Form(""),
+    twitter_access_token: str = Form(""),
+    twitter_access_token_secret: str = Form(""),
     login_identifier: str = Form(""),
     # linkedin
     access_token: str = Form(""),
@@ -248,8 +252,11 @@ def save_platform(
     secrets_map = {
         k: v for k, v in {
             "oauth2_token": oauth2_token,
+            "consumer_key": consumer_key,
+            "consumer_secret": consumer_secret,
+            "access_token": twitter_access_token if platform == "twitter" else access_token,
+            "access_token_secret": twitter_access_token_secret,
             "login_identifier": login_identifier,
-            "access_token": access_token,
             "person_urn": person_urn,
             "post_as": post_as,
             "company_admin_url": company_admin_url,

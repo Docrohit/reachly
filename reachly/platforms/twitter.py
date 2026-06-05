@@ -1,17 +1,22 @@
 """Twitter / X posting.
 
-API mode uses X API v2 with an OAuth2 user-context bearer token
-(scopes: tweet.write, media.write, users.read). Media upload follows the v2
-chunked INIT/APPEND/FINALIZE flow.
+API mode uses X API v2 with either an OAuth2 user-context bearer token
+(scopes: tweet.write, media.write, users.read) or OAuth 1.0a user-context
+credentials. Media upload follows the v2 chunked INIT/APPEND/FINALIZE flow.
 
 Browser mode logs in headlessly and composes a tweet via the web app.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import os
+import secrets
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -32,13 +37,23 @@ class TwitterApiPoster(Poster):
     def __init__(self, creds: PlatformCredentials):
         super().__init__(creds)
         self.token = creds.api_token
+        self.consumer_key = creds.extra.get("consumer_key") or ""
+        self.consumer_secret = creds.extra.get("consumer_secret") or ""
+        self.access_token = creds.extra.get("access_token") or ""
+        self.access_token_secret = creds.extra.get("access_token_secret") or ""
 
-    def _headers(self) -> dict:
+    def _headers(self, method: str = "POST", url: str = TWEETS) -> dict:
+        if self._has_oauth1():
+            return {"Authorization": self._oauth1_header(method, url)}
         return {"Authorization": f"Bearer {self.token}"}
 
     def post(self, post: GeneratedPost) -> PostResult:
-        if not self.token:
-            return self._fail("Missing TWITTER_OAUTH2_TOKEN for API mode.")
+        if not self.token and not self._has_oauth1():
+            return self._fail(
+                "Missing X API credentials. Set TWITTER_OAUTH2_TOKEN or "
+                "TWITTER_CONSUMER_KEY/TWITTER_CONSUMER_SECRET/"
+                "TWITTER_ACCESS_TOKEN/TWITTER_ACCESS_TOKEN_SECRET."
+            )
         try:
             media_ids = []
             if post.media and post.media.kind == "image":
@@ -48,7 +63,7 @@ class TwitterApiPoster(Poster):
             if media_ids:
                 payload["media"] = {"media_ids": media_ids}
 
-            r = requests.post(TWEETS, json=payload, headers=self._headers(), timeout=30)
+            r = requests.post(TWEETS, json=payload, headers=self._headers("POST", TWEETS), timeout=30)
             if r.status_code >= 300:
                 return self._fail(f"X tweet failed {r.status_code}: {r.text[:300]}")
             data = r.json().get("data", {})
@@ -66,7 +81,7 @@ class TwitterApiPoster(Poster):
                 "total_bytes": size,
                 "media_category": "tweet_image",
             },
-            headers=self._headers(),
+            headers=self._headers("POST", f"{MEDIA_UPLOAD}/initialize"),
             timeout=30,
         )
         init.raise_for_status()
@@ -77,13 +92,13 @@ class TwitterApiPoster(Poster):
                 f"{MEDIA_UPLOAD}/{media_id}/append",
                 data={"segment_index": 0},
                 files={"media": f},
-                headers=self._headers(),
+                headers=self._headers("POST", f"{MEDIA_UPLOAD}/{media_id}/append"),
                 timeout=60,
             ).raise_for_status()
 
         finalize = requests.post(
             f"{MEDIA_UPLOAD}/{media_id}/finalize",
-            headers=self._headers(),
+            headers=self._headers("POST", f"{MEDIA_UPLOAD}/{media_id}/finalize"),
             timeout=30,
         )
         finalize.raise_for_status()
@@ -102,7 +117,7 @@ class TwitterApiPoster(Poster):
             status = requests.get(
                 MEDIA_UPLOAD,
                 params={"command": "STATUS", "media_id": media_id},
-                headers=self._headers(),
+                headers=self._headers("GET", MEDIA_UPLOAD),
                 timeout=30,
             )
             status.raise_for_status()
@@ -113,6 +128,45 @@ class TwitterApiPoster(Poster):
             if state == "failed":
                 raise RuntimeError(f"X media processing failed: {processing}")
             wait = int(processing.get("check_after_secs") or 2)
+
+    def _has_oauth1(self) -> bool:
+        return all(
+            [
+                self.consumer_key,
+                self.consumer_secret,
+                self.access_token,
+                self.access_token_secret,
+            ]
+        )
+
+    def _oauth1_header(self, method: str, url: str) -> str:
+        params = {
+            "oauth_consumer_key": self.consumer_key,
+            "oauth_nonce": secrets.token_urlsafe(24),
+            "oauth_signature_method": "HMAC-SHA1",
+            "oauth_timestamp": str(int(time.time())),
+            "oauth_token": self.access_token,
+            "oauth_version": "1.0",
+        }
+        signature_base = "&".join(
+            [
+                method.upper(),
+                _percent_encode(url),
+                _percent_encode(
+                    "&".join(f"{_percent_encode(k)}={_percent_encode(v)}" for k, v in sorted(params.items()))
+                ),
+            ]
+        )
+        signing_key = f"{_percent_encode(self.consumer_secret)}&{_percent_encode(self.access_token_secret)}"
+        digest = hmac.new(signing_key.encode(), signature_base.encode(), hashlib.sha1).digest()
+        params["oauth_signature"] = base64.b64encode(digest).decode()
+        return "OAuth " + ", ".join(
+            f'{_percent_encode(k)}="{_percent_encode(v)}"' for k, v in sorted(params.items())
+        )
+
+
+def _percent_encode(value: str) -> str:
+    return quote(str(value), safe="~-._")
 
 
 class TwitterBrowserPoster(Poster):

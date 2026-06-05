@@ -103,7 +103,13 @@ def _creds_from_secrets(platform: Platform, mode: PlatformMode, s: dict) -> Plat
         return PlatformCredentials(
             platform=platform, mode=mode,
             api_token=s.get("oauth2_token"),
-            extra={"login_identifier": s.get("login_identifier", "")},
+            extra={
+                "login_identifier": s.get("login_identifier", ""),
+                "consumer_key": s.get("consumer_key", ""),
+                "consumer_secret": s.get("consumer_secret", ""),
+                "access_token": s.get("access_token", ""),
+                "access_token_secret": s.get("access_token_secret", ""),
+            },
             username=s.get("username"), password=s.get("password"),
         )
     if platform == Platform.linkedin:
