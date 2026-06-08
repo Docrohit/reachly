@@ -13,7 +13,7 @@ User=reachly
 WorkingDirectory=/opt/reachly
 EnvironmentFile=/opt/reachly/.env
 ExecStart=/opt/reachly/.venv/bin/python -m reachly.runner run
-Restart=on-failure
+Restart=always
 RestartSec=10
 
 [Install]

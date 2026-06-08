@@ -166,16 +166,14 @@ class LinkedInBrowserPoster(Poster):
                 page.keyboard.type(text, delay=5)
 
                 if post.media and post.media.kind == "image":
-                    try:
-                        page.get_by_role("button", name="Add a photo").click()
-                        page.locator("input[type='file']").first.set_input_files(
-                            post.media.local_path
+                    if not self._attach_image(page, post.media.local_path):
+                        shot = save_debug_artifact(
+                            page, self.data_dir, "linkedin", "image_attach_failed"
                         )
-                        page.wait_for_timeout(3000)
-                        page.get_by_role("button", name="Next").click()
-                        page.wait_for_timeout(1500)
-                    except Exception:  # noqa: BLE001
-                        logger.warning("LinkedIn image attach failed; posting text only.")
+                        logger.warning(
+                            "LinkedIn image attach failed; posting text only. Debug: %s",
+                            shot,
+                        )
 
                 if not self._click_post(page):
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "post_button_not_found")
@@ -184,6 +182,50 @@ class LinkedInBrowserPoster(Poster):
                 return self._ok()
         except Exception as e:  # noqa: BLE001
             return self._fail(f"LinkedIn browser error: {e}")
+
+    def _attach_image(self, page, image_path: str) -> bool:
+        """Attach an image in LinkedIn's feed or company-page composer."""
+        candidates = [
+            lambda: page.get_by_role("button", name=re.compile(r"add (a )?photo", re.I)).first,
+            lambda: page.get_by_role("button", name=re.compile(r"photo|image|media", re.I)).first,
+            lambda: page.locator("button[aria-label*='Add a photo' i]").first,
+            lambda: page.locator("button[aria-label*='media' i]").first,
+            lambda: page.locator("button:has-text('Add a photo')").first,
+            lambda: page.locator("button:has-text('Media')").first,
+        ]
+        for build in candidates:
+            try:
+                btn = build()
+                if btn.count() and btn.is_visible():
+                    btn.click(timeout=8000, force=True)
+                    page.wait_for_timeout(1000)
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+
+        try:
+            file_input = page.locator("input[type='file']").first
+            file_input.set_input_files(image_path, timeout=10000)
+            page.wait_for_timeout(5000)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("LinkedIn file input upload failed: %s", e)
+            return False
+
+        next_candidates = [
+            lambda: page.get_by_role("button", name=re.compile(r"^next$", re.I)).first,
+            lambda: page.locator("button:has-text('Next')").first,
+            lambda: page.get_by_role("button", name=re.compile(r"done", re.I)).first,
+        ]
+        for build in next_candidates:
+            try:
+                btn = build()
+                if btn.count() and btn.is_visible() and btn.is_enabled():
+                    btn.click(timeout=8000, force=True)
+                    page.wait_for_timeout(1500)
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return True
 
     def engage_with_hashtags(
         self,

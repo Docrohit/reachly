@@ -13,6 +13,7 @@ APP_DIR="/opt/reachly"
 SERVICE_USER="reachly"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 USE_BROWSER="${USE_BROWSER:-0}"   # set USE_BROWSER=1 to install Playwright + Chromium
+ENABLE_SERVICE="${ENABLE_SERVICE:-1}" # set ENABLE_SERVICE=0 to install without enabling systemd
 
 echo ">> Reachly install starting"
 echo "   source : $SRC_DIR"
@@ -68,7 +69,7 @@ User=$SERVICE_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$APP_DIR/.env
 ExecStart=$APP_DIR/.venv/bin/python -m reachly.runner run
-Restart=on-failure
+Restart=always
 RestartSec=10
 
 [Install]
@@ -76,6 +77,10 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
+if [ "$ENABLE_SERVICE" = "1" ]; then
+  echo ">> enabling reachly-agent.service"
+  systemctl enable reachly-agent.service
+fi
 
 echo ""
 echo "============================================================"
@@ -84,7 +89,7 @@ echo " Next:"
 echo "   1) sudo nano $APP_DIR/.env        # business info + keys"
 echo "   2) sudo -u $SERVICE_USER $APP_DIR/.venv/bin/python -m reachly.runner preview"
 echo "   3) set DRY_RUN=\"no\" in .env, then:"
-echo "      sudo systemctl enable --now reachly-agent"
+echo "      sudo systemctl restart reachly-agent"
 echo "      sudo journalctl -u reachly-agent -f"
 echo ""
 echo " For headless browser mode, re-run with: USE_BROWSER=1 sudo -E bash $0"
