@@ -176,6 +176,8 @@ def save_profile(
     brand_logo_path: str = Form(""),
     brand_logo_position: str = Form("bottom-right"),
     text_platform_image_rate: str = Form("0.5"),
+    linkedin_image_rate: str = Form(""),
+    twitter_image_rate: str = Form(""),
     goals: str = Form(""),
     context_repo: str = Form(""),
     posting_style: str = Form("thought_leader"),
@@ -194,6 +196,8 @@ def save_profile(
             "brand_logo_path": brand_logo_path,
             "brand_logo_position": brand_logo_position,
             "text_platform_image_rate": text_platform_image_rate,
+            "linkedin_image_rate": linkedin_image_rate,
+            "twitter_image_rate": twitter_image_rate,
         }.items() if v
     }
 

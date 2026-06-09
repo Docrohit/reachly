@@ -85,6 +85,16 @@ def build_agent_for_user(user: User) -> Agent | None:
         engagement_delay_minutes=user.engagement_delay_minutes,
         engagement_max_comments=user.engagement_max_comments,
         text_platform_image_rate=float(providers.get("text_platform_image_rate", 0.5)),
+        linkedin_image_rate=(
+            float(providers["linkedin_image_rate"])
+            if providers.get("linkedin_image_rate")
+            else None
+        ),
+        twitter_image_rate=(
+            float(providers["twitter_image_rate"])
+            if providers.get("twitter_image_rate")
+            else None
+        ),
     )
     if profile_row.goals.strip():
         data_dir.mkdir(parents=True, exist_ok=True)

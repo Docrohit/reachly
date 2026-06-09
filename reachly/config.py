@@ -92,6 +92,16 @@ class AgentConfig:
         self.engagement_delay_minutes = int(env.get("REACHLY_ENGAGEMENT_DELAY_MINUTES") or "30")
         self.engagement_max_comments = int(env.get("REACHLY_ENGAGEMENT_MAX_COMMENTS") or "3")
         self.text_platform_image_rate = float(env.get("REACHLY_TEXT_PLATFORM_IMAGE_RATE") or "0.5")
+        self.linkedin_image_rate = (
+            float(env["REACHLY_LINKEDIN_IMAGE_RATE"])
+            if env.get("REACHLY_LINKEDIN_IMAGE_RATE")
+            else None
+        )
+        self.twitter_image_rate = (
+            float(env["REACHLY_TWITTER_IMAGE_RATE"])
+            if env.get("REACHLY_TWITTER_IMAGE_RATE")
+            else None
+        )
 
         self.data_dir = Path(env.get("DATA_DIR") or "./.reachly_data").expanduser()
         self.data_dir.mkdir(parents=True, exist_ok=True)

@@ -64,6 +64,29 @@ class MediaBrandingTests(unittest.TestCase):
             always.close()
             never.close()
 
+    def test_text_platform_image_rate_can_be_overridden_per_platform(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            post = GeneratedPost(
+                theme="catalog ops",
+                hook="A better PDP starts before the render",
+                body="Body",
+                media=GeneratedMedia(kind="image", local_path="/tmp/image.png"),
+            )
+            agent = Agent(
+                BusinessProfile(name="Hygaar"),
+                {},
+                AgentSettings(
+                    data_dir=tmp,
+                    text_platform_image_rate=0,
+                    linkedin_image_rate=1,
+                ),
+            )
+
+            self.assertIsNotNone(agent._post_for_platform(post, Platform.linkedin).media)
+            self.assertIsNone(agent._post_for_platform(post, Platform.twitter).media)
+            agent.close()
+
 
 if __name__ == "__main__":
     unittest.main()

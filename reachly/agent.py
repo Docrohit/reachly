@@ -68,6 +68,8 @@ class AgentSettings:
     engagement_delay_minutes: int = 30
     engagement_max_comments: int = 3
     text_platform_image_rate: float = 0.5
+    linkedin_image_rate: Optional[float] = None
+    twitter_image_rate: Optional[float] = None
 
 
 class Agent:
@@ -135,6 +137,8 @@ class Agent:
             engagement_delay_minutes=cfg.engagement_delay_minutes,
             engagement_max_comments=cfg.engagement_max_comments,
             text_platform_image_rate=cfg.text_platform_image_rate,
+            linkedin_image_rate=cfg.linkedin_image_rate,
+            twitter_image_rate=cfg.twitter_image_rate,
         )
         return cls(cfg.business, cfg.platforms, settings)
 
@@ -369,12 +373,17 @@ class Agent:
     def _post_for_platform(self, post: GeneratedPost, platform: Platform) -> GeneratedPost:
         if platform == Platform.instagram or not post.media:
             return post
-        if self._use_media_on_text_platform(post):
+        if self._use_media_on_text_platform(post, platform):
             return post
         return post.model_copy(update={"media": None})
 
-    def _use_media_on_text_platform(self, post: GeneratedPost) -> bool:
-        rate = max(0.0, min(1.0, self.settings.text_platform_image_rate))
+    def _use_media_on_text_platform(self, post: GeneratedPost, platform: Platform) -> bool:
+        configured_rate = self.settings.text_platform_image_rate
+        if platform == Platform.linkedin and self.settings.linkedin_image_rate is not None:
+            configured_rate = self.settings.linkedin_image_rate
+        elif platform == Platform.twitter and self.settings.twitter_image_rate is not None:
+            configured_rate = self.settings.twitter_image_rate
+        rate = max(0.0, min(1.0, configured_rate))
         if rate >= 1:
             return True
         if rate <= 0:
