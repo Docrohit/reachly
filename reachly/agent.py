@@ -17,7 +17,7 @@ import hashlib
 import logging
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -140,7 +140,7 @@ class Agent:
 
     # ------------------------------------------------------------------
     def build_post(self, theme: Optional[str] = None) -> GeneratedPost:
-        theme = theme or pick_theme(self.business)
+        theme = theme or self._select_theme()
         logger.info("Generating post for theme: %s", theme)
         post = generate_post(
             self.llm,
@@ -157,6 +157,21 @@ class Agent:
             except Exception as e:  # noqa: BLE001
                 logger.warning("Media generation failed (%s); posting text-only.", e)
         return post
+
+    def _select_theme(self) -> str:
+        themes = self.business.themes_or_default()
+        if not themes:
+            return pick_theme(self.business)
+        recent = {
+            theme.strip().lower()
+            for theme in self.history.recent_themes(limit=max(1, min(len(themes) - 1, 5)))
+        }
+        start = date.today().toordinal() % len(themes)
+        for offset in range(len(themes)):
+            candidate = themes[(start + offset) % len(themes)]
+            if candidate.strip().lower() not in recent:
+                return candidate
+        return pick_theme(self.business)
 
     def _generate_media(self, prompt: str) -> Optional[GeneratedMedia]:
         media_dir = self.settings.data_dir / "media"

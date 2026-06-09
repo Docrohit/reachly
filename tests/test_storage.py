@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
+from reachly.agent import Agent, AgentSettings
+from reachly.models import BusinessProfile
 from reachly.storage import History
 
 
@@ -65,3 +67,33 @@ def test_history_migrates_and_summarizes_analytics(tmp_path):
     assert "linkedin last 1 posts" in newness
     assert "instagram last 1 posts" in newness
     history.close()
+
+
+def test_agent_theme_selection_avoids_recent_successful_themes(tmp_path):
+    agent = Agent(
+        BusinessProfile(
+            name="Hygaar",
+            content_themes=[
+                "fashion catalog automation",
+                "ethnic wear photoshoots",
+                "western wear launches",
+                "jewellery and accessory visuals",
+            ],
+        ),
+        {},
+        AgentSettings(data_dir=tmp_path),
+    )
+    selected = agent._select_theme()
+    agent.history.record(
+        theme=selected,
+        hook="First hook",
+        body="Body",
+        platform="twitter",
+        ok=True,
+    )
+
+    next_selected = agent._select_theme()
+
+    assert next_selected != selected
+    assert next_selected in agent.business.content_themes
+    agent.close()

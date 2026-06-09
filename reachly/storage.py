@@ -61,6 +61,30 @@ class History:
             )
             return [r[0] for r in cur.fetchall() if r[0]]
 
+    def recent_themes(self, limit: int = 5) -> list[str]:
+        """Return recently successful distinct themes, newest first."""
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT theme
+                FROM posts
+                WHERE ok = 1 AND theme != ''
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit * 4,),
+            )
+            out = []
+            seen = set()
+            for (theme,) in cur.fetchall():
+                key = theme.strip().lower()
+                if key and key not in seen:
+                    seen.add(key)
+                    out.append(theme)
+                if len(out) >= limit:
+                    break
+            return out
+
     def recent_platform_posts(self, platform: str | None = None, limit: int = 3) -> list[dict]:
         query = (
             "SELECT id, created_at, theme, hook, body, platform, ok, permalink, error, "
