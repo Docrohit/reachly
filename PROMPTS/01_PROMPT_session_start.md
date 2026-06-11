@@ -26,4 +26,5 @@ Rules:
 - Keep Reachly deploys isolated to Reachly paths/services.
 - For browser posting changes, verify with real page state or debug artifacts.
 - If posting live content, confirm platform/account first.
+- **Always create a branch from the latest deploy branch** (e.g., `main` or `dev-env`). NEVER branch from another feature branch — it drags in unmerged commits from other work and causes spurious conflicts. Push your branch + raise a PR; never push directly to shared env branches.
 ```
