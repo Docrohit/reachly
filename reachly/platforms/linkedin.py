@@ -171,7 +171,6 @@ class LinkedInBrowserPoster(Poster):
                 if editor is None:
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "editor_not_found")
                     return self._fail(f"LinkedIn composer editor not found. Debug: {shot}")
-                self._replace_editor_text(page, editor, text)
 
                 if post.media and post.media.kind == "image":
                     if not self._attach_image(page, post.media.local_path):
@@ -182,6 +181,12 @@ class LinkedInBrowserPoster(Poster):
                             "LinkedIn image attach failed; posting text only. Debug: %s",
                             shot,
                         )
+
+                editor = self._find_editor(page)
+                if editor is None:
+                    shot = save_debug_artifact(page, self.data_dir, "linkedin", "editor_after_media_not_found")
+                    return self._fail(f"LinkedIn composer editor not found after media. Debug: {shot}")
+                self._replace_editor_text(page, editor, text)
 
                 if not self._ensure_text_present(page, text):
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "text_missing")
@@ -406,7 +411,7 @@ class LinkedInBrowserPoster(Poster):
 
     def _open_company_admin_composer(self, page, admin_url: str) -> bool:
         """Open the Company Page admin surface and start a post from there."""
-        page.goto(admin_url, wait_until="domcontentloaded")
+        self._goto_company_admin(page, admin_url)
         page.wait_for_timeout(3500)
         if "/login" in page.url or "/checkpoint" in page.url or "authwall" in page.url:
             return False
@@ -470,6 +475,13 @@ class LinkedInBrowserPoster(Poster):
             except Exception:  # noqa: BLE001
                 continue
         return False
+
+    def _goto_company_admin(self, page, admin_url: str) -> None:
+        try:
+            page.goto(admin_url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as first_error:  # noqa: BLE001
+            logger.warning("LinkedIn company admin load timed out, retrying: %s", first_error)
+            page.goto(admin_url, wait_until="commit", timeout=60000)
 
     def _click_start_post_menu_item(self, page) -> bool:
         """Click LinkedIn admin's Create > Start a post row, not only its text node."""
