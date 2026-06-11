@@ -26,6 +26,15 @@ REST = "https://api.linkedin.com/rest"
 LINKEDIN_VERSION = "202505"  # YYYYMM; bump periodically
 
 
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _text_probe(text: str) -> str:
+    normalized = _normalize_text(text)
+    return normalized[:80]
+
+
 class LinkedInApiPoster(Poster):
     platform = Platform.linkedin
 
@@ -162,8 +171,7 @@ class LinkedInBrowserPoster(Poster):
                 if editor is None:
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "editor_not_found")
                     return self._fail(f"LinkedIn composer editor not found. Debug: {shot}")
-                editor.click()
-                page.keyboard.type(text, delay=5)
+                self._replace_editor_text(page, editor, text)
 
                 if post.media and post.media.kind == "image":
                     if not self._attach_image(page, post.media.local_path):
@@ -174,6 +182,13 @@ class LinkedInBrowserPoster(Poster):
                             "LinkedIn image attach failed; posting text only. Debug: %s",
                             shot,
                         )
+
+                if not self._ensure_text_present(page, text):
+                    shot = save_debug_artifact(page, self.data_dir, "linkedin", "text_missing")
+                    return self._fail(
+                        "LinkedIn composer text was missing after media attachment. "
+                        f"Nothing was posted. Debug: {shot}"
+                    )
 
                 if not self._click_post(page):
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "post_button_not_found")
@@ -495,6 +510,40 @@ class LinkedInBrowserPoster(Poster):
             except Exception:  # noqa: BLE001
                 continue
         return None
+
+    def _replace_editor_text(self, page, editor, text: str) -> None:
+        editor.click()
+        try:
+            page.keyboard.press("ControlOrMeta+A")
+            page.keyboard.type(text, delay=5)
+        except Exception:  # noqa: BLE001
+            editor.click()
+            page.keyboard.type(text, delay=5)
+        page.wait_for_timeout(500)
+
+    def _ensure_text_present(self, page, text: str) -> bool:
+        """Verify LinkedIn kept the post text after image upload."""
+        expected = _text_probe(text)
+        for attempt in range(2):
+            editor = self._find_editor(page)
+            if editor is None:
+                return False
+            try:
+                current = editor.inner_text(timeout=3000)
+            except Exception:  # noqa: BLE001
+                current = ""
+            if expected and expected in _normalize_text(current):
+                return True
+            logger.warning(
+                "LinkedIn composer text missing after media attach; retyping (attempt %s).",
+                attempt + 1,
+            )
+            self._replace_editor_text(page, editor, text)
+        try:
+            current = self._find_editor(page).inner_text(timeout=3000)
+        except Exception:  # noqa: BLE001
+            current = ""
+        return bool(expected and expected in _normalize_text(current))
 
     def _click_post(self, page) -> bool:
         candidates = [
