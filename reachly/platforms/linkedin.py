@@ -200,13 +200,17 @@ class LinkedInBrowserPoster(Poster):
 
     def _attach_image(self, page, image_path: str) -> bool:
         """Attach an image in LinkedIn's feed or company-page composer."""
+        root = self._composer_root(page)
         candidates = [
-            lambda: page.get_by_role("button", name=re.compile(r"add (a )?photo", re.I)).first,
-            lambda: page.get_by_role("button", name=re.compile(r"photo|image|media", re.I)).first,
-            lambda: page.locator("button[aria-label*='Add a photo' i]").first,
-            lambda: page.locator("button[aria-label*='media' i]").first,
-            lambda: page.locator("button:has-text('Add a photo')").first,
-            lambda: page.locator("button:has-text('Media')").first,
+            lambda: root.get_by_role("button", name=re.compile(r"add media", re.I)).first,
+            lambda: root.locator("button[aria-label*='Add media' i]").first,
+            lambda: root.get_by_role("button", name=re.compile(r"add (a )?photo", re.I)).first,
+            lambda: root.get_by_role("button", name=re.compile(r"photo|image|media", re.I)).first,
+            lambda: root.locator("button[aria-label*='Add a photo' i]").first,
+            lambda: root.locator("button[aria-label*='media' i]").first,
+            lambda: root.locator("button:has-text('Add a photo')").first,
+            lambda: root.locator("button:has-text('Photo')").first,
+            lambda: root.locator("button:has-text('Media')").first,
         ]
         for build in candidates:
             try:
@@ -218,8 +222,26 @@ class LinkedInBrowserPoster(Poster):
             except Exception:  # noqa: BLE001
                 continue
 
+        photo_options = [
+            lambda: root.get_by_role("button", name=re.compile(r"photo", re.I)).first,
+            lambda: root.locator("button[aria-label*='photo' i]").first,
+            lambda: root.locator("button:has-text('Photo')").first,
+            lambda: page.get_by_role("button", name=re.compile(r"^photo$", re.I)).last,
+        ]
+        for build in photo_options:
+            try:
+                option = build()
+                if option.count() and option.is_visible():
+                    option.click(timeout=8000, force=True)
+                    page.wait_for_timeout(1000)
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+
         try:
-            file_input = page.locator("input[type='file']").first
+            file_input = root.locator("input[type='file']").first
+            if not file_input.count():
+                file_input = page.locator("input[type='file']").last
             file_input.set_input_files(image_path, timeout=10000)
             page.wait_for_timeout(5000)
         except Exception as e:  # noqa: BLE001
@@ -241,6 +263,23 @@ class LinkedInBrowserPoster(Poster):
             except Exception:  # noqa: BLE001
                 continue
         return True
+
+    def _composer_root(self, page):
+        """Return the active share composer scope to avoid clicking feed controls."""
+        selectors = [
+            "div[role='dialog']",
+            "div[aria-modal='true']",
+            ".share-box",
+            ".share-creation-state",
+        ]
+        for selector in selectors:
+            try:
+                loc = page.locator(selector).last
+                if loc.count() and loc.is_visible():
+                    return loc
+            except Exception:  # noqa: BLE001
+                continue
+        return page
 
     def engage_with_hashtags(
         self,
