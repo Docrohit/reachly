@@ -79,6 +79,9 @@ Required GitHub repository secrets:
 | `REACHLY_DEPLOY_USER` | SSH user, defaults to `ubuntu` when blank |
 | `REACHLY_DEPLOY_SSH_KEY` | private deploy key with server access |
 | `REACHLY_DEPLOY_PATH` | optional target path, defaults to `/opt/reachly-saas` |
+| `REACHLY_BASTION_HOST` | optional bastion/VPN host for private deploy hosts |
+| `REACHLY_BASTION_USER` | optional bastion SSH user, defaults to `ubuntu` |
+| `REACHLY_BASTION_SSH_KEY` | private bastion key, required only with bastion host |
 
 Server `.env` must already exist at the deploy path and must contain production
 secrets such as:

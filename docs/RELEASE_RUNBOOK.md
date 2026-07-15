@@ -72,6 +72,9 @@ Required GitHub Actions production secrets:
 | `REACHLY_DEPLOY_USER` | yes | SSH user; workflow defaults empty value to `ubuntu` |
 | `REACHLY_DEPLOY_SSH_KEY` | yes | Private deploy key with server access |
 | `REACHLY_DEPLOY_PATH` | no | Defaults to `/opt/reachly-saas` |
+| `REACHLY_BASTION_HOST` | no | Optional bastion/VPN host when the deploy host is private |
+| `REACHLY_BASTION_USER` | no | Optional bastion SSH user; defaults to `ubuntu` |
+| `REACHLY_BASTION_SSH_KEY` | no | Required only when `REACHLY_BASTION_HOST` is set |
 
 ## Server Prerequisites
 
@@ -105,7 +108,8 @@ Deployment should happen through GitHub Actions after production secrets exist:
 1. Push to `main` after review approval.
 2. Confirm the push-triggered `test` job passes.
 3. Run the `Reachly CI/CD` workflow manually with `deploy=true`.
-4. Confirm the `deploy` job restarts `reachly-saas`.
+4. Confirm the `deploy` job restarts `reachly-saas` and reloads the Reachly
+   nginx vhost.
 5. Confirm the workflow smoke test passes.
 
 Do not manually edit files on the server. If emergency rollback is required,

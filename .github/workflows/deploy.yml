@@ -52,18 +52,45 @@ jobs:
           REACHLY_DEPLOY_SSH_KEY: ${{ secrets.REACHLY_DEPLOY_SSH_KEY }}
           REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
           REACHLY_DEPLOY_USER: ${{ secrets.REACHLY_DEPLOY_USER }}
+          REACHLY_BASTION_HOST: ${{ secrets.REACHLY_BASTION_HOST }}
+          REACHLY_BASTION_USER: ${{ secrets.REACHLY_BASTION_USER }}
+          REACHLY_BASTION_SSH_KEY: ${{ secrets.REACHLY_BASTION_SSH_KEY }}
         run: |
           test -n "$REACHLY_DEPLOY_SSH_KEY"
           test -n "$REACHLY_DEPLOY_HOST"
           mkdir -p ~/.ssh
           printf '%s\n' "$REACHLY_DEPLOY_SSH_KEY" > ~/.ssh/reachly_deploy_key
           chmod 600 ~/.ssh/reachly_deploy_key
-          ssh-keyscan -H "$REACHLY_DEPLOY_HOST" >> ~/.ssh/known_hosts
-          echo "REACHLY_DEPLOY_USER=${REACHLY_DEPLOY_USER:-ubuntu}" >> "$GITHUB_ENV"
+          if [ -n "$REACHLY_BASTION_HOST" ]; then
+            test -n "$REACHLY_BASTION_SSH_KEY"
+            printf '%s\n' "$REACHLY_BASTION_SSH_KEY" > ~/.ssh/reachly_bastion_key
+            chmod 600 ~/.ssh/reachly_bastion_key
+            cat > ~/.ssh/config <<EOF
+          Host reachly-bastion
+            HostName $REACHLY_BASTION_HOST
+            User ${REACHLY_BASTION_USER:-ubuntu}
+            IdentityFile ~/.ssh/reachly_bastion_key
+            StrictHostKeyChecking accept-new
+
+          Host reachly-target
+            HostName $REACHLY_DEPLOY_HOST
+            User ${REACHLY_DEPLOY_USER:-ubuntu}
+            IdentityFile ~/.ssh/reachly_deploy_key
+            ProxyJump reachly-bastion
+            StrictHostKeyChecking accept-new
+          EOF
+          else
+            cat > ~/.ssh/config <<EOF
+          Host reachly-target
+            HostName $REACHLY_DEPLOY_HOST
+            User ${REACHLY_DEPLOY_USER:-ubuntu}
+            IdentityFile ~/.ssh/reachly_deploy_key
+            StrictHostKeyChecking accept-new
+          EOF
+          fi
 
       - name: Sync source
         env:
-          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
           REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
         run: |
           TARGET_PATH="${REACHLY_DEPLOY_PATH:-/opt/reachly-saas}"
@@ -77,9 +104,9 @@ jobs:
             --exclude '*.db' \
             --exclude '__pycache__' \
             --exclude '*.pyc' \
-            -e "ssh -i ~/.ssh/reachly_deploy_key" \
-            ./ "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST:/tmp/reachly_src/"
-          ssh -i ~/.ssh/reachly_deploy_key "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST" \
+            -e "ssh" \
+            ./ reachly-target:/tmp/reachly_src/
+          ssh reachly-target \
             "set -e
             sudo id reachly >/dev/null 2>&1 || sudo useradd --system --create-home --shell /usr/sbin/nologin reachly
             sudo mkdir -p '$TARGET_PATH' && sudo rsync -a --delete \
@@ -93,11 +120,10 @@ jobs:
 
       - name: Install dependencies and restart service
         env:
-          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
           REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
         run: |
           TARGET_PATH="${REACHLY_DEPLOY_PATH:-/opt/reachly-saas}"
-          ssh -i ~/.ssh/reachly_deploy_key "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST" "
+          ssh reachly-target "
             set -e
             sudo test -f '$TARGET_PATH/.env'
             sudo python3 -m venv '$TARGET_PATH/.venv'
@@ -105,6 +131,13 @@ jobs:
             sudo '$TARGET_PATH/.venv/bin/pip' install -q -r '$TARGET_PATH/requirements.txt'
             sudo cp '$TARGET_PATH/deploy/reachly-saas.service' /etc/systemd/system/reachly-saas.service
             sudo sed -i 's|/opt/reachly-saas|$TARGET_PATH|g' /etc/systemd/system/reachly-saas.service
+            if command -v nginx >/dev/null 2>&1; then
+              sudo cp '$TARGET_PATH/deploy/nginx/reachly.hygaar.com.conf' /etc/nginx/sites-available/reachly.hygaar.com.conf
+              sudo ln -sf /etc/nginx/sites-available/reachly.hygaar.com.conf /etc/nginx/sites-enabled/reachly.hygaar.com.conf
+              sudo rm -f /etc/nginx/sites-enabled/reach.hygaar.com.conf
+              sudo nginx -t
+              sudo systemctl reload nginx
+            fi
             sudo systemctl daemon-reload
             sudo systemctl enable reachly-saas.service
             sudo systemctl restart reachly-saas.service
@@ -112,8 +145,5 @@ jobs:
           "
 
       - name: Smoke test
-        env:
-          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
         run: |
-          ssh -i ~/.ssh/reachly_deploy_key "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST" \
-            "curl -fsS http://127.0.0.1:8050/healthz"
+          ssh reachly-target "curl -fsS http://127.0.0.1:8050/healthz"
