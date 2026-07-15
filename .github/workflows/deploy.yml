@@ -34,7 +34,9 @@ jobs:
         run: python -m compileall reachly server tests
 
       - name: Run tests
-        run: pytest tests -q
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests -q
 
   deploy:
     needs: test

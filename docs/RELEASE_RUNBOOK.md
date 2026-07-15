@@ -14,7 +14,7 @@ Run from the Reachly repo root:
 
 ```bash
 python -m compileall reachly server tests
-pytest tests -q
+PYTHONPATH=. python -m pytest tests -q
 git diff --check
 ruby -e "require 'yaml'; YAML.load_file('.github/workflows/deploy.yml'); puts 'workflow_yaml_ok'"
 bash -n deploy/install_saas_on_server.sh
