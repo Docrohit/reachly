@@ -1,0 +1,117 @@
+name: Reachly CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy reachly-saas after tests pass"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Compile Python
+        run: python -m compileall reachly server tests
+
+      - name: Run tests
+        run: pytest tests -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy == true
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          REACHLY_DEPLOY_SSH_KEY: ${{ secrets.REACHLY_DEPLOY_SSH_KEY }}
+          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
+          REACHLY_DEPLOY_USER: ${{ secrets.REACHLY_DEPLOY_USER }}
+        run: |
+          test -n "$REACHLY_DEPLOY_SSH_KEY"
+          test -n "$REACHLY_DEPLOY_HOST"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$REACHLY_DEPLOY_SSH_KEY" > ~/.ssh/reachly_deploy_key
+          chmod 600 ~/.ssh/reachly_deploy_key
+          ssh-keyscan -H "$REACHLY_DEPLOY_HOST" >> ~/.ssh/known_hosts
+          echo "REACHLY_DEPLOY_USER=${REACHLY_DEPLOY_USER:-ubuntu}" >> "$GITHUB_ENV"
+
+      - name: Sync source
+        env:
+          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
+          REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
+        run: |
+          TARGET_PATH="${REACHLY_DEPLOY_PATH:-/opt/reachly-saas}"
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.env' \
+            --exclude '.venv' \
+            --exclude '.reachly_data' \
+            --exclude 'reachly_media' \
+            --exclude '*.db' \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            -e "ssh -i ~/.ssh/reachly_deploy_key" \
+            ./ "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST:/tmp/reachly_src/"
+          ssh -i ~/.ssh/reachly_deploy_key "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST" \
+            "set -e
+            sudo id reachly >/dev/null 2>&1 || sudo useradd --system --create-home --shell /usr/sbin/nologin reachly
+            sudo mkdir -p '$TARGET_PATH' && sudo rsync -a --delete \
+              --exclude '.env' \
+              --exclude '.venv' \
+              --exclude '.reachly_data' \
+              --exclude 'data' \
+              --exclude 'reachly_media' \
+              --exclude '*.db' \
+              /tmp/reachly_src/ '$TARGET_PATH/' && sudo chown -R reachly:reachly '$TARGET_PATH'"
+
+      - name: Install dependencies and restart service
+        env:
+          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
+          REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
+        run: |
+          TARGET_PATH="${REACHLY_DEPLOY_PATH:-/opt/reachly-saas}"
+          ssh -i ~/.ssh/reachly_deploy_key "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST" "
+            set -e
+            sudo test -f '$TARGET_PATH/.env'
+            sudo python3 -m venv '$TARGET_PATH/.venv'
+            sudo '$TARGET_PATH/.venv/bin/pip' install --upgrade pip -q
+            sudo '$TARGET_PATH/.venv/bin/pip' install -q -r '$TARGET_PATH/requirements.txt'
+            sudo cp '$TARGET_PATH/deploy/reachly-saas.service' /etc/systemd/system/reachly-saas.service
+            sudo sed -i 's|/opt/reachly-saas|$TARGET_PATH|g' /etc/systemd/system/reachly-saas.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable reachly-saas.service
+            sudo systemctl restart reachly-saas.service
+            sudo systemctl is-active reachly-saas.service
+          "
+
+      - name: Smoke test
+        env:
+          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/reachly_deploy_key "$REACHLY_DEPLOY_USER@$REACHLY_DEPLOY_HOST" \
+            "curl -fsS http://127.0.0.1:8050/healthz"

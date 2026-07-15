@@ -10,9 +10,11 @@
 Reachly is an **AI thought-leadership autopilot**. Given a business profile,
 strategy goals, and optional product documentation, it:
 
-1. **Writes** original posts (hook, body, hashtags, link) rotated across themes
-2. **Generates** optional images/video (Gemini, Hygaar, or bring-your-own keys)
-3. **Publishes** to LinkedIn, X, and Instagram on a schedule (API or browser)
+1. **Writes** original short posts (hook, body, hashtags, link) rotated across themes,
+   **and** long-form Medium articles (title, subtitle, 850–1300 word body, tags)
+2. **Generates** optional images/video (Gemini, Hygaar, or bring-your-own keys) —
+   including a required 16:9 image for each Medium article
+3. **Publishes** to LinkedIn, X, Instagram, and Medium on a schedule (API or browser)
 4. **Logs** everything for audit and de-duplication
 
 **Primary user today:** Hygaar (founder/brand team posting as thought leader +
@@ -115,10 +117,11 @@ Reachly **never modifies** Hygaar backend — only calls public APIs.
 - Multiple slots per day (`POST_TIMES`) beat one mega-post — different audience windows
 - **Hygaar default:** LinkedIn at 09:00, 13:30, 21:00 (Asia/Kolkata)
 - **Instagram stagger:** `INSTAGRAM_OFFSET_MINUTES` after each LinkedIn slot (default **5** → 09:05, 13:35, 21:05)
-- LinkedIn and Instagram are **separate scheduler jobs**, not one combined run
+- **Medium track:** long-form articles on **their own independent slots** (`MEDIUM_TIMES`, default **10:30, 17:30**) — NOT tied to the LinkedIn/Instagram social stagger
+- LinkedIn, Instagram, and Medium are **separate scheduler jobs**, not one combined run (Hygaar default = 8 jobs: 3 LinkedIn + 3 Instagram + 2 Medium)
 - LinkedIn slot saves caption + metadata to `pending_instagram_post.json`; Instagram slot reuses it and generates the image then
-- Images are generated **at the Instagram slot** from the LLM's `image_prompt` (not at LinkedIn time)
-- Theme rotation prevents repetition; recent hooks fed back to LLM as negative examples
+- Images are generated **at the Instagram slot** from the LLM's `image_prompt` (not at LinkedIn time); each **Medium article generates its own 16:9 image** at its slot
+- Theme rotation prevents repetition; recent hooks/article openings fed back to LLM as negative examples
 - Start in `DRY_RUN` until human approves voice
 
 ---
@@ -152,7 +155,8 @@ Do not put posting logic in the dashboard — dashboard triggers Agent only.
 |---|---|
 | LinkedIn company page posting (browser) | `LINKEDIN_POST_AS="HyGaar"` configured; verify after every UI change |
 | Instagram live posting | **Enabled** (browser mode); session must be primed once; selectors updated for `/create/select/` |
-| Staggered LinkedIn → Instagram (3× daily) | **Live** — 6 scheduler jobs on server |
+| Medium article posting (browser) | **Live** — publishing public articles on 2 daily slots (`MEDIUM_TIMES`); persistent session, 16:9 image required |
+| Staggered LinkedIn → Instagram (3× daily) | **Live** — 6 scheduler jobs on server (+2 Medium = 8 total) |
 | X / Twitter | Browser mode implemented; blocked by X temporary login limits/checkpoint until session is primed |
 | Read Reachly's own AGENTS.md in context | Available at `/opt/reachly/` |
 | nginx public URL `reach.hygaar.com` | Config added; DNS/ALB route may be needed |
@@ -164,6 +168,7 @@ Do not put posting logic in the dashboard — dashboard triggers Agent only.
 
 - 3 posts/day on LinkedIn without manual writing
 - 3 posts/day on Instagram (image + caption), 5 min after each LinkedIn slot
+- 2 long-form Medium articles/day (public), each with a 16:9 image, on their own slots
 - X posts automatically once the server browser session is successfully primed
 - Posts reflect current product positioning (from docs)
 - < 5 min human time per week (goals update + occasional approve)

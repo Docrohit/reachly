@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Upgrade · Reachly{% endblock %}
 {% block content %}
-<h1>Upgrade to Reachly Pro</h1>
+<h1>Billing</h1>
 <div class="grid cols2">
   <div class="card">
-    <h2>Pro</h2>
-    <p class="muted">Everything you need to run daily, for real.</p>
+    <h2>Reachly Pro</h2>
+    <p class="muted">Hygaar-managed publishing for teams that want daily social and long-form content without manual operations.</p>
     <ul class="muted">
-      <li>Live posting to LinkedIn, X &amp; Instagram</li>
-      <li>Daily AI content + image generation</li>
-      <li>API &amp; headless browser modes</li>
-      <li>Self-host download + license key</li>
+      <li>Live posting to LinkedIn, X, Instagram and Medium</li>
+      <li>API-first platform credentials with browser fallback</li>
+      <li>Encrypted AI and platform credential vault</li>
+      <li>Optional self-hosted agent license</li>
     </ul>
     {% if user.is_active %}
-      <p class="ok">You're already Pro 🎉</p>
+      <p class="ok">Your account is active.</p>
       <a class="btn" href="/install">Get the self-host agent</a>
     {% else %}
       <button class="btn primary" onclick="checkout()">Upgrade now</button>
@@ -22,13 +22,14 @@
   </div>
   <div class="card">
     <h2>How billing works</h2>
-    <p class="muted">Checkout is handled by Stripe. When payment completes, your
-      account is activated automatically and you can switch from dry-run to live,
-      or download the self-host package.</p>
+    <p class="muted">Reachly billing is separate from Hygaar media-generation credits.
+      A Reachly subscription controls publishing automation, schedules, account setup
+      and the hosted dashboard. Hygaar media APIs may still charge credits when selected
+      as the image or video provider.</p>
     {% if not settings.stripe_secret_key %}
-    <p class="err">Billing isn't configured on this server yet
-      (set <code>REACHLY_STRIPE_*</code>). The server owner can activate approved
-      accounts from Telegram until Stripe is connected.</p>
+    <p class="err">Billing is not configured on this server yet. Set
+      <code>REACHLY_STRIPE_*</code> or add approved Hygaar emails to
+      <code>REACHLY_HYGAAR_PRO_EMAILS</code>.</p>
     {% endif %}
   </div>
 </div>

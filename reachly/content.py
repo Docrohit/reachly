@@ -65,6 +65,75 @@ Return JSON exactly like:
   "cta_link": "https://... or null"
 }}"""
 
+ARTICLE_SYSTEM_PROMPT = """You are a senior B2B editorial strategist writing for
+CEOs, CMOs, ecommerce leaders, marketing heads, catalogue heads, and founders
+researching AI product photography. You write sharp Medium articles that earn
+attention with a strong commercial insight, explain the operational problem
+clearly, and naturally improve search discoverability for Hygaar. You sound like
+a serious CTO/operator, not an ad writer. Avoid fluff, fake statistics, and
+generic AI hype. Output ONLY valid JSON, no markdown fences."""
+
+ARTICLE_PROMPT_TEMPLATE = """Write ONE original Medium article for today.
+
+BUSINESS:
+- Name: {name}
+- Sector: {sector}
+- Vision: {vision}
+- Product/Service: {product_info}
+- Website: {website}
+- Brand voice: {voice}
+- Language: {language}
+
+TODAY'S THEME: {theme}
+{strategy_block}
+{performance_block}
+{recent_block}
+Audience:
+- CEOs
+- CMOs and marketing heads
+- Ecommerce/catalogue heads
+- Brand and creative operations leaders
+- Founders and operators searching for AI photoshoots, AI product photography,
+  catalogue photography with AI, ecommerce AI shoots, or bulk SKU image generation
+
+Requirements:
+- "title": attention-capturing and commercially serious, not clickbait.
+- "title" or "subtitle" should naturally include one search-intent phrase such
+  as AI product photography, AI photoshoot, ecommerce AI shoot, catalogue
+  photography, product photography with AI, or bulk SKU image generation.
+- "subtitle": one concise line that makes the article relevant to leaders.
+- "body": 850-1300 words, written in short readable paragraphs for Medium.
+  It should create urgency around product media, catalogue consistency, SKU
+  operations, launch speed, brand trust, and marketing execution. Include
+  practical language a buyer would search for: AI photoshoots for products,
+  AI product photography, product and catalogue photography with AI, ecommerce
+  AI shoots, PDP image generation, marketplace-ready product images, and bulk
+  generation of SKU images, and bulk generation of SKU images. Work these phrases in naturally; do not keyword
+  stuff. Mention {name} as the company building this workflow, and write from a
+  CTO/operator point of view when natural.
+- Include one concrete section or paragraph on how a brand should evaluate AI
+  product photography tools for consistency, detail retention, workflow speed,
+  review control, and catalogue scale.
+- "tags": 3-5 Medium tags, no # prefix.
+  Prefer tags from this pool when relevant: AI Product Photography, Ecommerce,
+  Product Photography, Catalogue Management, Marketing, Retail Tech, Generative AI.
+- "image_prompt": one 16:9 editorial ecommerce image prompt. It must be concrete,
+  premium, brand-safe, and relevant to product catalogues, fashion/beauty/home
+  products, marketing operations, or ecommerce teams. No text overlays, fake UI,
+  fake logos, abstract charts, or generic stock office scenes.
+- "cta_link": the single most relevant URL to include or null.
+
+Return JSON exactly like:
+{{
+  "theme": "...",
+  "title": "...",
+  "subtitle": "...",
+  "body": "...",
+  "tags": ["...", "..."],
+  "image_prompt": "...",
+  "cta_link": "https://... or null"
+}}"""
+
 
 def pick_theme(business: BusinessProfile, for_day: Optional[date] = None) -> str:
     """Deterministically rotate through themes so each day differs."""
@@ -149,6 +218,77 @@ def generate_post(
     )
 
 
+def generate_medium_article(
+    llm: LLMClient,
+    business: BusinessProfile,
+    *,
+    theme: Optional[str] = None,
+    recent_hooks: Optional[list[str]] = None,
+    performance_context: Optional[str] = None,
+    newness_context: Optional[str] = None,
+    strategy: Optional[StrategyContext] = None,
+) -> GeneratedPost:
+    theme = theme or pick_theme(business)
+    recent_block = ""
+    if recent_hooks:
+        joined = "\n".join(f"  - {h}" for h in recent_hooks[-10:])
+        recent_block = "\nDo NOT repeat these recent article/post openings:\n" + joined + "\n"
+    if newness_context:
+        recent_block += (
+            "\nRECENT POSTS TO DIFFERENTIATE FROM:\n"
+            + newness_context.strip()
+            + "\n"
+        )
+
+    strategy_block = ""
+    if strategy:
+        block = strategy.for_prompt()
+        if block:
+            strategy_block = "\nSTRATEGY & POSITIONING (follow closely):\n" + block + "\n"
+
+    performance_block = ""
+    if performance_context:
+        performance_block = (
+            "\nRECENT PERFORMANCE / ANALYTICS CONTEXT:\n"
+            + performance_context.strip()
+            + "\nUse this to choose a fresh, stronger article angle.\n"
+        )
+
+    prompt = ARTICLE_PROMPT_TEMPLATE.format(
+        name=business.name,
+        sector=business.sector or "(unspecified)",
+        vision=business.vision or "(unspecified)",
+        product_info=business.product_info or "(unspecified)",
+        website=business.website or "(none)",
+        voice=business.brand_voice,
+        language=business.language,
+        theme=theme,
+        strategy_block=strategy_block,
+        performance_block=performance_block,
+        recent_block=recent_block,
+    )
+
+    data = llm.generate_json(ARTICLE_SYSTEM_PROMPT, prompt)
+    tags = _normalize_medium_tags(data.get("tags", []))
+    subtitle = str(data.get("subtitle") or "").strip()
+    body = str(data.get("body") or "").strip()
+    if subtitle and not body.startswith(subtitle):
+        body = f"{subtitle}\n\n{body}"
+    link = data.get("cta_link") or business.website
+    if isinstance(link, str) and link.lower() in ("null", "none", ""):
+        link = business.website
+    image_prompt = _medium_image_prompt(data.get("image_prompt"), business)
+
+    return GeneratedPost(
+        theme=data.get("theme", theme),
+        hook=str(data.get("title") or "").strip(),
+        body=body,
+        hashtags=tags,
+        link=link,
+        image_prompt=image_prompt,
+    )
+
+
 def generate_engagement_comment(
     llm: LLMClient,
     business: BusinessProfile,
@@ -196,6 +336,22 @@ def _normalize_hashtags(tags: list, defaults: list[str]) -> list[str]:
     return out[:10]
 
 
+def _normalize_medium_tags(tags: list) -> list[str]:
+    out: list[str] = []
+    seen = set()
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        clean = tag.strip().lstrip("#")
+        if not clean:
+            continue
+        key = clean.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(clean[:25])
+    return out[:5]
+
+
 def _product_image_prompt(prompt: object, business: BusinessProfile) -> str:
     raw = prompt.strip() if isinstance(prompt, str) else ""
     if not raw:
@@ -222,4 +378,30 @@ def _product_image_prompt(prompt: object, business: BusinessProfile) -> str:
         "brand logo to be added after generation. Avoid overusing sneakers; rotate through western "
         "dresses, ethnic wear, sarees, kurtas, jewellery, beauty, home decor, bags, "
         f"watches, and accessories where relevant. Business context: {context[:900]}"
+    )
+
+
+def _medium_image_prompt(prompt: object, business: BusinessProfile) -> str:
+    raw = prompt.strip() if isinstance(prompt, str) else ""
+    if not raw:
+        raw = (
+            "A premium 16:9 editorial ecommerce visual showing a polished product "
+            "catalogue production setup with fashion, beauty, or home products."
+        )
+    context = " ".join(
+        part
+        for part in [
+            business.sector or "",
+            business.product_info or "",
+            " ".join(business.content_themes),
+        ]
+        if part
+    )
+    return (
+        f"{raw}\n\n"
+        "Hard image requirements: 16:9 horizontal editorial image, realistic premium "
+        "ecommerce/product media scene, no text overlays, no fake dashboards, no fake "
+        "logos, no abstract charts, no generic office stock photo. Show tangible "
+        "products, styling, catalogue production, campaign visuals, or quality-control "
+        f"context. Business context: {context[:900]}"
     )

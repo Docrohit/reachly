@@ -6,32 +6,32 @@
   <title>{% block title %}Reachly{% endblock %}</title>
   <style>
     :root{
-      --bg:#0b0d12; --panel:#141821; --panel2:#1b2230; --line:#26304200;
-      --border:#26304a; --text:#e9edf5; --muted:#97a3b6; --brand:#6c8cff;
-      --brand2:#9d6cff; --ok:#34d399; --err:#f87171; --radius:14px;
+      --bg:#f6f8fc; --panel:#ffffff; --panel2:#f8fafc; --line:#dfe5f2;
+      --border:#dfe5f2; --text:#1b254b; --muted:#667085; --brand:#5a67ff;
+      --brand2:#4c51bf; --ok:#079455; --err:#d92d20; --radius:12px;
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
-      background:radial-gradient(1200px 600px at 70% -10%,#1a2236 0,transparent 60%),var(--bg);
+      background:var(--bg);
       color:var(--text);line-height:1.55}
     a{color:var(--brand);text-decoration:none}
     .wrap{max-width:1040px;margin:0 auto;padding:24px}
     nav{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;
       border-bottom:1px solid var(--border);position:sticky;top:0;backdrop-filter:blur(8px);
-      background:rgba(11,13,18,.7);z-index:10}
-    .logo{font-weight:800;font-size:20px;letter-spacing:-.5px}
+      background:rgba(255,255,255,.82);z-index:10}
+    .logo{font-weight:800;font-size:20px}
     .logo span{background:linear-gradient(90deg,var(--brand),var(--brand2));
       -webkit-background-clip:text;background-clip:text;color:transparent}
     .btn{display:inline-block;padding:10px 16px;border-radius:10px;font-weight:600;cursor:pointer;
       border:1px solid var(--border);background:var(--panel2);color:var(--text);transition:.15s}
     .btn:hover{transform:translateY(-1px)}
-    .btn.primary{background:linear-gradient(90deg,var(--brand),var(--brand2));border:none;color:#fff}
+    .btn.primary{background:var(--brand);border:none;color:#fff}
     .btn.ghost{background:transparent}
     .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-      padding:22px;margin-bottom:18px}
+      padding:22px;margin-bottom:18px;box-shadow:0 8px 30px -18px rgba(27,37,75,.24)}
     .grid{display:grid;gap:18px}
     @media(min-width:760px){.grid.cols2{grid-template-columns:1fr 1fr}}
-    h1{font-size:40px;letter-spacing:-1px;margin:.2em 0}
+    h1{font-size:40px;margin:.2em 0}
     h2{font-size:22px;margin:.2em 0 .6em}
     .muted{color:var(--muted)}
     label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
@@ -41,7 +41,7 @@
     .row{display:flex;gap:12px;flex-wrap:wrap}
     .row>div{flex:1;min-width:180px}
     .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
-    .pill.on{background:rgba(52,211,153,.15);color:var(--ok)}
+    .pill.on{background:#ecfdf3;color:var(--ok)}
     .pill.off{background:rgba(151,163,182,.15);color:var(--muted)}
     table{width:100%;border-collapse:collapse;font-size:14px}
     th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
@@ -57,6 +57,8 @@
     <div class="row" style="gap:10px">
       {% if user %}
         <a class="btn ghost" href="/dashboard">Dashboard</a>
+        <a class="btn ghost" href="/profile">Profile</a>
+        <a class="btn ghost" href="/billing">Billing</a>
         <a class="btn ghost" href="/logout">Log out</a>
       {% else %}
         <a class="btn ghost" href="/login">Log in</a>
@@ -67,7 +69,7 @@
   <div class="wrap">
     {% block content %}{% endblock %}
   </div>
-  <footer>Reachly — your AI thought-leadership autopilot · posts daily on LinkedIn, X & Instagram</footer>
+  <footer>Reachly by Hygaar - AI publishing for LinkedIn, X, Instagram and Medium</footer>
   {% block scripts %}{% endblock %}
 </body>
 </html>

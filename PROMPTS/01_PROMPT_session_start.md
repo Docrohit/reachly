@@ -15,7 +15,7 @@ Before doing anything:
 6. Summarize:
    - current product goal
    - current deploy locations
-   - platform status for LinkedIn, Instagram, X
+   - platform status for LinkedIn, Instagram, X, and Medium
    - what is safe to change
    - what must not be changed
 

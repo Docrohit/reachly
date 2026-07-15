@@ -23,6 +23,7 @@ class Platform(str, Enum):
     twitter = "twitter"
     linkedin = "linkedin"
     instagram = "instagram"
+    medium = "medium"
 
 
 class BusinessProfile(BaseModel):
@@ -100,6 +101,11 @@ class GeneratedPost(BaseModel):
             budget = 280 - (len(tail) + 1 if tail else 0)
             text = base[:budget].rstrip()
             return f"{text}\n{tail}".strip()
+        if platform == Platform.medium:
+            parts = [self.hook.strip(), "", self.body.strip()]
+            if link:
+                parts += ["", link]
+            return "\n".join(parts).strip()
         # LinkedIn / Instagram: full body.
         parts = [self.hook.strip(), "", self.body.strip()]
         if link:

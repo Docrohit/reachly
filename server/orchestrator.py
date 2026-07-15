@@ -21,6 +21,7 @@ from reachly.models import (
     PlatformCredentials,
     PlatformMode,
 )
+from reachly.settings_store import instagram_times_for
 
 from .crypto import decrypt_dict
 from .db import BusinessProfileRow, PlatformCredRow, PostLogRow, User, get_session
@@ -131,6 +132,7 @@ def _creds_from_secrets(platform: Platform, mode: PlatformMode, s: dict) -> Plat
             api_token=s.get("access_token"),
             extra={
                 "person_urn": s.get("person_urn", ""),
+                "organization_id": s.get("organization_id", ""),
                 "post_as": s.get("post_as", ""),
                 "company_admin_url": s.get("company_admin_url", ""),
             },
@@ -142,6 +144,17 @@ def _creds_from_secrets(platform: Platform, mode: PlatformMode, s: dict) -> Plat
             api_token=s.get("access_token"),
             extra={"user_id": s.get("user_id", "")},
             username=s.get("username"), password=s.get("password"),
+        )
+    if platform == Platform.medium:
+        return PlatformCredentials(
+            platform=platform,
+            mode=mode,
+            extra={
+                "publish_status": s.get("publish_status", "draft"),
+                "expected_account": s.get("expected_account", ""),
+            },
+            username=s.get("email"),
+            password=s.get("password"),
         )
     raise ValueError(platform)
 
@@ -165,6 +178,49 @@ def run_user_now(user_id: int, theme: str | None = None) -> dict:
         logger.info("Scheduled hosted LinkedIn engagement for user %s in %ss.", user_id, delay)
     agent.close()
 
+    _record_results(user_id, results)
+    return {p.value: {"ok": r.ok, "permalink": r.permalink, "error": r.error} for p, r in results.items()}
+
+
+def run_user_linkedin_slot(user_id: int) -> dict:
+    return _run_user_slot(user_id, "linkedin")
+
+
+def run_user_instagram_slot(user_id: int) -> dict:
+    return _run_user_slot(user_id, "instagram")
+
+
+def run_user_medium_slot(user_id: int) -> dict:
+    return _run_user_slot(user_id, "medium")
+
+
+def _run_user_slot(user_id: int, slot: str) -> dict:
+    with get_session() as session:
+        user = session.get(User, user_id)
+    if not user or not user.is_active:
+        return {"error": "account not active"}
+    agent = build_agent_for_user(user)
+    if not agent:
+        return {"error": "no business profile configured"}
+    try:
+        if slot == "linkedin":
+            results = agent.run_linkedin_slot()
+            if user.enable_engagement and results.get(Platform.linkedin) and results[Platform.linkedin].ok:
+                delay = max(1, user.engagement_delay_minutes) * 60
+                threading.Timer(delay, _run_user_engagement, args=(user_id,)).start()
+        elif slot == "instagram":
+            results = agent.run_instagram_slot()
+        elif slot == "medium":
+            results = agent.run_medium_slot()
+        else:
+            return {"error": f"unknown slot {slot}"}
+    finally:
+        agent.close()
+    _record_results(user_id, results)
+    return {p.value: {"ok": r.ok, "permalink": r.permalink, "error": r.error} for p, r in results.items()}
+
+
+def _record_results(user_id: int, results: dict) -> None:
     with get_session() as session:
         for platform, res in results.items():
             session.add(
@@ -177,7 +233,6 @@ def run_user_now(user_id: int, theme: str | None = None) -> dict:
                 )
             )
         session.commit()
-    return {p.value: {"ok": r.ok, "permalink": r.permalink, "error": r.error} for p, r in results.items()}
 
 
 def _run_user_engagement(user_id: int) -> None:
@@ -209,12 +264,52 @@ def tick() -> None:
         except Exception:  # noqa: BLE001
             tz = ZoneInfo("UTC")
         now = datetime.now(tz)
-        if now.strftime("%H:%M") == (user.post_time or "09:30"):
-            logger.info("Posting time reached for user %s.", user.id)
+        now_hm = now.strftime("%H:%M")
+        for action in scheduled_actions_for_user(user, now_hm):
+            logger.info("Reachly %s slot reached for user %s.", action, user.id)
             try:
-                run_user_now(user.id)
+                if action == "linkedin":
+                    run_user_linkedin_slot(user.id)
+                elif action == "instagram":
+                    run_user_instagram_slot(user.id)
+                elif action == "medium":
+                    run_user_medium_slot(user.id)
             except Exception:  # noqa: BLE001
-                logger.exception("Run failed for user %s", user.id)
+                logger.exception("%s run failed for user %s", action, user.id)
+
+
+def scheduled_actions_for_user(user: User, now_hm: str) -> list[str]:
+    linkedin_times = _parse_times(user.post_times or user.post_time or "09:30")
+    medium_times = _parse_times(user.medium_times or "")
+    instagram_times = instagram_times_for(
+        linkedin_times,
+        int(user.instagram_offset_minutes or 0),
+    )
+    actions = []
+    if now_hm in linkedin_times:
+        actions.append("linkedin")
+    if now_hm in instagram_times:
+        actions.append("instagram")
+    if now_hm in medium_times:
+        actions.append("medium")
+    return actions
+
+
+def _parse_times(value: str) -> list[str]:
+    out = []
+    for item in (value or "").replace(" ", "").split(","):
+        if not item:
+            continue
+        parts = item.split(":")
+        if len(parts) != 2:
+            continue
+        try:
+            hour, minute = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            out.append(f"{hour:02d}:{minute:02d}")
+    return out
 
 
 def start_scheduler():

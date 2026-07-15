@@ -19,6 +19,7 @@ def run_daily(
     *,
     linkedin_times: list[str],
     instagram_times: list[str],
+    medium_times: list[str],
     timezone: str,
 ) -> None:
     sched = BlockingScheduler(timezone=timezone)
@@ -98,10 +99,32 @@ def run_daily(
             misfire_grace_time=900,
         )
 
+    for pt in medium_times:
+        h, m = (int(x) for x in pt.strip().split(":"))
+
+        def _medium_job(hour=h, minute=m, slot=pt):
+            logger.info("Medium trigger at %s (%s).", slot, timezone)
+            try:
+                agent.run_medium_slot()
+            except Exception as e:  # noqa: BLE001
+                message = f"Medium run failed at {slot}: {e}"
+                logger.exception(message)
+                agent.history.record_event(platform="medium", ok=False, error=message)
+
+        sched.add_job(
+            _medium_job,
+            CronTrigger(hour=h, minute=m, timezone=timezone),
+            id=f"medium-{pt}",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=900,
+        )
+
     logger.info(
-        "Reachly scheduled — LinkedIn: %s | Instagram: %s (%s)",
+        "Reachly scheduled — LinkedIn: %s | Instagram: %s | Medium: %s (%s)",
         ", ".join(linkedin_times),
         ", ".join(instagram_times),
+        ", ".join(medium_times),
         timezone,
     )
     try:

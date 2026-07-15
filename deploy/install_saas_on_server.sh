@@ -10,6 +10,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/reachly-saas}"
 SERVICE_USER="${SERVICE_USER:-reachly}"
+REACHLY_DOMAIN="${REACHLY_DOMAIN:-reachly.hygaar.com}"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo ">> Reachly SaaS install starting"
@@ -57,12 +58,16 @@ systemctl daemon-reload
 
 echo ">> installing nginx vhost when nginx is present"
 if command -v nginx >/dev/null 2>&1; then
-  if [ -f /etc/letsencrypt/live/reachly.nftforger.com/fullchain.pem ]; then
+  if [ "$REACHLY_DOMAIN" = "reachly.hygaar.com" ]; then
+    cp "$APP_DIR/deploy/nginx/reachly.hygaar.com.conf" /etc/nginx/sites-available/reachly.hygaar.com
+    ln -sf /etc/nginx/sites-available/reachly.hygaar.com /etc/nginx/sites-enabled/reachly.hygaar.com
+  elif [ -f /etc/letsencrypt/live/reachly.nftforger.com/fullchain.pem ]; then
     cp "$APP_DIR/deploy/nginx/reachly.nftforger.com.ssl.conf" /etc/nginx/sites-available/reachly.nftforger.com
+    ln -sf /etc/nginx/sites-available/reachly.nftforger.com /etc/nginx/sites-enabled/reachly.nftforger.com
   else
     cp "$APP_DIR/deploy/nginx/reachly.nftforger.com.conf" /etc/nginx/sites-available/reachly.nftforger.com
+    ln -sf /etc/nginx/sites-available/reachly.nftforger.com /etc/nginx/sites-enabled/reachly.nftforger.com
   fi
-  ln -sf /etc/nginx/sites-available/reachly.nftforger.com /etc/nginx/sites-enabled/reachly.nftforger.com
   nginx -t
   systemctl reload nginx
 fi

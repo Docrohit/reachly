@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Profile · Reachly{% endblock %}
+{% block content %}
+<h1>Profile</h1>
+<div class="grid cols2">
+  <div class="card">
+    <h2>Hygaar account</h2>
+    <table>
+      <tr><th>User ID</th><td>{{ user.hygaar_user_id or '-' }}</td></tr>
+      <tr><th>Name</th><td>{{ user.username or '-' }}</td></tr>
+      <tr><th>Email</th><td>{{ user.email or '-' }}</td></tr>
+      <tr><th>Roles</th><td>{{ user.roles or '-' }}</td></tr>
+      <tr><th>Plan</th><td><span class="pill {{ 'on' if user.is_active else 'off' }}">{{ user.plan }}</span></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Reachly setup</h2>
+    <table>
+      <tr><th>Business</th><td>{{ profile.name if profile else 'Not configured' }}</td></tr>
+      <tr><th>Posting style</th><td>{{ profile.posting_style if profile else '-' }}</td></tr>
+      <tr><th>Connected platforms</th><td>{{ platform_count }}</td></tr>
+      <tr><th>Mode</th><td>{{ 'Dry run' if user.dry_run else 'Live posting' }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent posts</h2>
+  {% if logs %}
+  <table>
+    <tr><th>When</th><th>Platform</th><th>Status</th><th>Detail</th></tr>
+    {% for l in logs %}
+    <tr>
+      <td>{{ l.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ l.platform }}</td>
+      <td>{% if l.ok %}<span class="ok">ok</span>{% else %}<span class="err">failed</span>{% endif %}</td>
+      <td class="muted">{% if l.permalink %}<a href="{{ l.permalink }}" target="_blank">Open</a>{% else %}{{ l.error or '-' }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No Reachly activity has been recorded for this account yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

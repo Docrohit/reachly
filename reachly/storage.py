@@ -132,7 +132,7 @@ class History:
         return "\n".join(lines)
 
     def newness_summary(self, limit_per_platform: int = 3) -> str:
-        platforms = ["linkedin", "instagram", "twitter"]
+        platforms = ["linkedin", "instagram", "twitter", "medium"]
         sections = []
         for platform in platforms:
             rows = self.recent_platform_posts(platform, limit_per_platform)

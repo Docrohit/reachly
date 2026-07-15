@@ -25,3 +25,6 @@ itsdangerous>=2.2
 cryptography>=42.0
 python-multipart>=0.0.9
 stripe>=9.0                # optional: payments
+
+# ---- Test runner ----
+pytest>=8.0

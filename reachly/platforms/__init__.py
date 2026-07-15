@@ -34,6 +34,11 @@ def get_poster(creds: PlatformCredentials, *, data_dir, public_media_base_url=No
 
         return InstagramBrowserPoster(creds, data_dir=data_dir)
 
+    if creds.platform == Platform.medium:
+        from .medium import MediumBrowserPoster
+
+        return MediumBrowserPoster(creds, data_dir=data_dir)
+
     raise ValueError(f"Unsupported platform: {creds.platform}")
 
 

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import AgentConfig
-from .content import generate_engagement_comment, generate_post, pick_theme
+from .content import generate_engagement_comment, generate_medium_article, generate_post, pick_theme
 from .context import load_strategy_context
 from .llm import LLMClient
 from .media import HygaarClient, generate_image_gemini
@@ -70,6 +70,7 @@ class AgentSettings:
     text_platform_image_rate: float = 0.5
     linkedin_image_rate: Optional[float] = None
     twitter_image_rate: Optional[float] = None
+    medium_image_aspect_ratio: str = "16:9"
 
 
 class Agent:
@@ -139,6 +140,7 @@ class Agent:
             text_platform_image_rate=cfg.text_platform_image_rate,
             linkedin_image_rate=cfg.linkedin_image_rate,
             twitter_image_rate=cfg.twitter_image_rate,
+            medium_image_aspect_ratio=cfg.medium_image_aspect_ratio,
         )
         return cls(cfg.business, cfg.platforms, settings)
 
@@ -177,7 +179,21 @@ class Agent:
                 return candidate
         return pick_theme(self.business)
 
-    def _generate_media(self, prompt: str) -> Optional[GeneratedMedia]:
+    def build_medium_article(self, theme: Optional[str] = None) -> GeneratedPost:
+        theme = theme or self._select_theme()
+        logger.info("Generating Medium article for theme: %s", theme)
+        post = generate_medium_article(
+            self.llm,
+            self.business,
+            theme=theme,
+            recent_hooks=self.history.recent_hooks(),
+            performance_context=self.history.analytics_summary(days=14, limit=12),
+            newness_context=self.history.newness_summary(limit_per_platform=3),
+            strategy=self._strategy,
+        )
+        return self._ensure_image(post, aspect_ratio=self.settings.medium_image_aspect_ratio)
+
+    def _generate_media(self, prompt: str, *, aspect_ratio: str = "1:1") -> Optional[GeneratedMedia]:
         media_dir = self.settings.data_dir / "media"
         if self.settings.image_provider == "gemini":
             return generate_image_gemini(
@@ -187,6 +203,7 @@ class Agent:
                 out_dir=media_dir,
                 logo_path=self.settings.brand_logo_path,
                 logo_position=self.settings.brand_logo_position,
+                aspect_ratio=aspect_ratio,
             )
         if self.settings.image_provider == "hygaar":
             client = HygaarClient(self.settings.hygaar_base_url, self.settings.hygaar_api_token)
@@ -257,7 +274,7 @@ class Agent:
             logger.exception("LinkedIn engagement follow-up failed.")
             return 0
 
-    def _ensure_image(self, post: GeneratedPost) -> GeneratedPost:
+    def _ensure_image(self, post: GeneratedPost, *, aspect_ratio: str = "1:1") -> GeneratedPost:
         if post.media and post.media.local_path:
             return post
         if not self.settings.attach_image:
@@ -265,7 +282,7 @@ class Agent:
         if not post.image_prompt:
             post.image_prompt = f"Professional social media image illustrating: {post.hook}"
         try:
-            post.media = self._generate_media(post.image_prompt)
+            post.media = self._generate_media(post.image_prompt, aspect_ratio=aspect_ratio)
         except Exception as e:  # noqa: BLE001
             logger.warning("Image generation failed (%s).", e)
         return post
@@ -297,6 +314,20 @@ class Agent:
                     )
                 }
             return self._publish(post, platforms=[Platform.instagram])
+
+    def run_medium_slot(self, theme: Optional[str] = None) -> dict[Platform, PostResult]:
+        """Generate and publish one long-form Medium article with a 16:9 image."""
+        with self._run_lock:
+            post = self.build_medium_article(theme)
+            if not post.media:
+                return {
+                    Platform.medium: PostResult(
+                        platform=Platform.medium,
+                        ok=False,
+                        error="Medium article requires a 16:9 image; generation failed.",
+                    )
+                }
+            return self._publish(post, platforms=[Platform.medium])
 
     def run_once(
         self,
@@ -371,7 +402,7 @@ class Agent:
         return results
 
     def _post_for_platform(self, post: GeneratedPost, platform: Platform) -> GeneratedPost:
-        if platform == Platform.instagram or not post.media:
+        if platform in (Platform.instagram, Platform.medium) or not post.media:
             return post
         if self._use_media_on_text_platform(post, platform):
             return post

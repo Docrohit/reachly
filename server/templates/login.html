@@ -3,37 +3,52 @@
 {% block content %}
 <div style="max-width:460px;margin:40px auto">
   <div class="card">
-    <h2>Sign in with Telegram</h2>
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="width:64px;height:64px;border-radius:16px;background:#fff;box-shadow:0 4px 16px rgba(90,103,255,.12);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">
+        <strong style="font-size:22px;color:var(--brand)">R</strong>
+      </div>
+      <h1 style="font-size:28px;margin:0">Welcome back</h1>
+      <p class="muted" style="margin-top:6px">Sign in with your Hygaar console account.</p>
+    </div>
+
     {% if error %}<p class="err">{{ error }}</p>{% endif %}
-    <ol class="muted" style="padding-left:18px">
-      <li>Open
-        {% if bot %}<a href="https://t.me/{{ bot }}" target="_blank">@{{ bot }}</a>{% else %}our Telegram bot{% endif %}
-        and send <code>/start</code>.</li>
-      <li>Enter the handle it gives you below and request a code.</li>
-      <li>Type the code we DM you.</li>
-    </ol>
 
-    <label>Your Telegram handle or ID</label>
-    <input id="handle" placeholder="@yourname or 123456789" />
-    <button class="btn primary" style="margin-top:12px;width:100%" onclick="sendCode()">Send me a code</button>
-    <p id="msg" class="muted" style="min-height:20px;margin-top:8px"></p>
-
-    <form method="post" action="/auth/verify" id="verifyForm" style="display:none">
-      <input type="hidden" name="handle" id="handleHidden" />
-      <label>Enter the 6-digit code</label>
-      <input name="code" inputmode="numeric" maxlength="6" placeholder="••••••" />
-      <button class="btn primary" style="margin-top:12px;width:100%" type="submit">Verify &amp; sign in</button>
+    <form method="post" action="/auth/hygaar/login">
+      <label>Email</label>
+      <input name="email" type="email" autocomplete="email" value="{{ email or '' }}" placeholder="you@company.com" required />
+      <label>Password</label>
+      <input name="password" type="password" autocomplete="current-password" placeholder="Min. 8 characters" required />
+      <button class="btn primary" style="margin-top:18px;width:100%" type="submit">Sign in</button>
     </form>
+
+    {% if telegram_enabled %}
+    <div style="border-top:1px solid var(--border);margin-top:24px;padding-top:18px">
+      <h2 style="font-size:16px">Legacy Telegram login</h2>
+      <p class="muted">Use this only for old Reachly SaaS test accounts.</p>
+      <label>Your Telegram handle or ID</label>
+      <input id="handle" placeholder="@yourname or 123456789" />
+      <button class="btn" style="margin-top:12px;width:100%" onclick="sendCode()" type="button">Send Telegram code</button>
+      <p id="msg" class="muted" style="min-height:20px;margin-top:8px"></p>
+
+      <form method="post" action="/auth/verify" id="verifyForm" style="display:none">
+        <input type="hidden" name="handle" id="handleHidden" />
+        <label>Enter the 6-digit code</label>
+        <input name="code" inputmode="numeric" maxlength="6" placeholder="000000" />
+        <button class="btn" style="margin-top:12px;width:100%" type="submit">Verify Telegram code</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
+{% if telegram_enabled %}
 <script>
 async function sendCode(){
   const handle = document.getElementById('handle').value.trim();
   const msg = document.getElementById('msg');
   if(!handle){msg.textContent='Enter your handle first.';return;}
-  msg.textContent='Sending…';
+  msg.textContent='Sending...';
   const fd = new FormData(); fd.append('handle', handle);
   const r = await fetch('/auth/send-code',{method:'POST',body:fd});
   const j = await r.json();
@@ -44,4 +59,5 @@ async function sendCode(){
   }
 }
 </script>
+{% endif %}
 {% endblock %}

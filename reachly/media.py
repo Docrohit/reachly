@@ -59,6 +59,7 @@ def generate_image_gemini(
     out_dir: Path,
     logo_path: Optional[str] = None,
     logo_position: str = "bottom-right",
+    aspect_ratio: str = "1:1",
 ) -> GeneratedMedia:
     from google import genai
 
@@ -66,7 +67,7 @@ def generate_image_gemini(
     full_prompt = (
         f"{prompt}\n\nStyle: clean, professional, social-media ready, "
         f"no text, no watermark, no fake logo. Leave clean corner space for "
-        f"the provided brand logo. Aspect ratio roughly 1:1."
+        f"the provided brand logo. Aspect ratio roughly {aspect_ratio}."
     )
     resp = client.models.generate_content(model=model, contents=[full_prompt])
 
@@ -92,8 +93,8 @@ def _apply_logo_overlay(
     *,
     logo_path: Optional[str],
     position: str = "bottom-right",
-    max_width_ratio: float = 0.14,
-    opacity: float = 0.86,
+    max_width_ratio: float = 0.18,
+    opacity: float = 0.92,
 ) -> None:
     if not logo_path:
         return

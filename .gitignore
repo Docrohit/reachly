@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+.DS_Store
 .env
 .reachly_data/
 reachly_media/
@@ -9,3 +10,4 @@ reachly_server.db
 smoke_*.txt
 DEPLOY_SESSION.md
 li_debug.png
+local_ops/

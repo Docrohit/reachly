@@ -41,7 +41,9 @@ class LinkedInApiPoster(Poster):
     def __init__(self, creds: PlatformCredentials):
         super().__init__(creds)
         self.token = creds.api_token
-        self.person_urn = (creds.extra or {}).get("person_urn") or None
+        extra = creds.extra or {}
+        self.person_urn = extra.get("person_urn") or None
+        self.organization_id = extra.get("organization_id") or extra.get("organization_urn") or None
 
     def _headers(self, extra: dict | None = None) -> dict:
         h = {
@@ -55,6 +57,10 @@ class LinkedInApiPoster(Poster):
         return h
 
     def _resolve_author(self) -> str:
+        if self.organization_id:
+            if self.organization_id.startswith("urn:li:organization:"):
+                return self.organization_id
+            return f"urn:li:organization:{self.organization_id}"
         if self.person_urn:
             return self.person_urn
         # /userinfo (OpenID) returns "sub" = the member id.

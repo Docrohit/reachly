@@ -102,6 +102,8 @@ class AgentConfig:
             if env.get("REACHLY_TWITTER_IMAGE_RATE")
             else None
         )
+        self.medium_times_raw = env.get("MEDIUM_TIMES") or "09:30,14:30,19:30"
+        self.medium_image_aspect_ratio = env.get("MEDIUM_IMAGE_ASPECT_RATIO") or "16:9"
 
         self.data_dir = Path(env.get("DATA_DIR") or "./.reachly_data").expanduser()
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -152,6 +154,16 @@ class AgentConfig:
             extra={"user_id": env.get("INSTAGRAM_USER_ID", "")},
             username=env.get("INSTAGRAM_USERNAME") or None,
             password=env.get("INSTAGRAM_PASSWORD") or None,
+        )
+        out[Platform.medium] = PlatformCredentials(
+            platform=Platform.medium,
+            mode=PlatformMode(env.get("MEDIUM_MODE", "off")),
+            extra={
+                "publish_status": env.get("MEDIUM_PUBLISH_STATUS", "draft"),
+                "expected_account": env.get("MEDIUM_EXPECTED_ACCOUNT", ""),
+            },
+            username=env.get("MEDIUM_EMAIL") or None,
+            password=env.get("MEDIUM_PASSWORD") or None,
         )
         return out
 

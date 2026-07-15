@@ -9,15 +9,15 @@
 
 Reachly should be a productized social posting autopilot any company can set up
 without engineering help: connect Telegram login, define business goals, add
-platform credentials or API keys, and receive scheduled posts across LinkedIn,
-Instagram, and X.
+platform credentials or API keys, and receive scheduled content across LinkedIn,
+Instagram, X, and Medium (long-form articles).
 
 ## Primary Outcomes
 
 1. **Reliable daily publishing**
-   - Generate and publish 3 useful, on-brand posts per day for Hygaar.
-   - Keep LinkedIn and Instagram live; bring X online after server session priming.
-   - Every post attempt must be auditable in `history.db` and server logs.
+   - Generate and publish 3 useful, on-brand posts per day for Hygaar, plus 3 long-form Medium articles.
+   - Keep LinkedIn, Instagram, and Medium live; bring X online after server session priming.
+   - Every post/article attempt must be auditable in `history.db` and server logs.
 
 2. **Company-agnostic setup**
    - A new company should provide business profile, goals, docs, and credentials.
@@ -45,6 +45,7 @@ Instagram, and X.
 |---|---|---|
 | Instagram | 3 posts/day on `@hygaar.studios` | Live; verified 3 posts on 2026-06-04 |
 | LinkedIn | 3 posts/day on HyGaar company page | Browser mode live; company-page targeting configured and needs monitoring |
+| Medium | 3 long-form articles/day | Live; browser mode, publishing public articles (16:9 image) on `MEDIUM_TIMES` slots |
 | X | 3 posts/day on `@hygaarstudios` | Browser mode implemented; blocked by X login limit/checkpoint |
 | Product SaaS | usable by any company | Live basics; continue hardening onboarding and billing |
 | Context | easy future setup | `AGENTS.md`, `product_theory.md`, `business_goals.md`, `PROMPTS/`, `sessions/` |
@@ -59,7 +60,7 @@ Instagram, and X.
 
 ## Near-Term Backlog
 
-- Add stronger post-publication verification for Instagram and LinkedIn browser mode.
+- Add stronger post-publication verification for Instagram, LinkedIn, and Medium browser mode.
 - Prime X server session after X temporary login limit clears.
 - Confirm LinkedIn company-page posting on the next scheduled run.
 - Add dashboard surfaces for recent post audit and platform health.

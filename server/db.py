@@ -15,7 +15,17 @@ engine = create_engine(_settings.database_url, echo=False, connect_args=_connect
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    telegram_chat_id: str = Field(index=True, unique=True)
+    auth_provider: str = Field(default="telegram", index=True)  # hygaar | telegram
+
+    # Hygaar identity provider fields. Reachly keeps its own app DB, keyed by
+    # Hygaar's stable Account.user_id when users sign in from the console.
+    hygaar_user_id: Optional[str] = Field(default=None, index=True, unique=True)
+    email: Optional[str] = Field(default=None, index=True)
+    username: Optional[str] = None
+    roles: str = ""  # comma-separated display/cache only; Hygaar remains source.
+
+    # Legacy Telegram login fields remain for old SaaS/self-host experiments.
+    telegram_chat_id: Optional[str] = Field(default=None, index=True, unique=True)
     telegram_username: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -25,6 +35,9 @@ class User(SQLModel, table=True):
 
     # posting schedule
     post_time: str = "09:30"
+    post_times: str = "09:00,13:30,21:00"
+    instagram_offset_minutes: int = 5
+    medium_times: str = "09:30,14:30,19:30"
     timezone: str = "UTC"
     attach_image: bool = True
     dry_run: bool = True               # users start in dry-run until they confirm
@@ -61,7 +74,7 @@ class BusinessProfileRow(SQLModel, table=True):
 class PlatformCredRow(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
-    platform: str                       # twitter | linkedin | instagram
+    platform: str                       # twitter | linkedin | instagram | medium
     mode: str = "off"                   # api | browser | off
     vault: str = ""                     # encrypted JSON of secrets
 
@@ -108,6 +121,14 @@ def _migrate_sqlite() -> None:
         user_rows = conn.exec_driver_sql("PRAGMA table_info(user)").fetchall()
         user_existing = {row[1] for row in user_rows}
         user_additions = {
+            "auth_provider": "VARCHAR NOT NULL DEFAULT 'telegram'",
+            "hygaar_user_id": "VARCHAR",
+            "email": "VARCHAR",
+            "username": "VARCHAR",
+            "roles": "VARCHAR NOT NULL DEFAULT ''",
+            "post_times": "VARCHAR NOT NULL DEFAULT '09:00,13:30,21:00'",
+            "instagram_offset_minutes": "INTEGER NOT NULL DEFAULT 5",
+            "medium_times": "VARCHAR NOT NULL DEFAULT '09:30,14:30,19:30'",
             "enable_engagement": "BOOLEAN NOT NULL DEFAULT 0",
             "engagement_delay_minutes": "INTEGER NOT NULL DEFAULT 30",
             "engagement_max_comments": "INTEGER NOT NULL DEFAULT 3",

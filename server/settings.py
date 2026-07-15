@@ -14,7 +14,7 @@ class ServerSettings:
         self.vault_key = os.getenv("REACHLY_VAULT_KEY", "")
         self.session_secret = os.getenv("REACHLY_SESSION_SECRET", "")
 
-        # Telegram bot used for OTP login.
+        # Legacy Telegram bot used for optional OTP login.
         self.telegram_bot_token = os.getenv("REACHLY_TELEGRAM_BOT_TOKEN", "")
         self.telegram_bot_username = os.getenv("REACHLY_TELEGRAM_BOT_USERNAME", "")
         self.admin_telegram_ids = {
@@ -26,6 +26,23 @@ class ServerSettings:
         # Where generated media is stored + publicly served (needed by IG API mode).
         self.media_dir = os.getenv("REACHLY_MEDIA_DIR", "./reachly_media")
         self.public_base_url = os.getenv("REACHLY_PUBLIC_BASE_URL", "http://localhost:8000")
+
+        # Hygaar account login. Reachly stays a separate app, but can use Hygaar
+        # credentials as the identity provider.
+        self.hygaar_api_base_url = os.getenv(
+            "REACHLY_HYGAAR_API_BASE_URL",
+            "https://dev-genai.hygaar.com",
+        ).rstrip("/")
+        self.hygaar_login_path = os.getenv("REACHLY_HYGAAR_LOGIN_PATH", "/auth/login/")
+        self.hygaar_timeout_seconds = float(os.getenv("REACHLY_HYGAAR_TIMEOUT_SECONDS", "20"))
+        self.hygaar_pro_emails = {
+            item.strip().lower()
+            for item in os.getenv("REACHLY_HYGAAR_PRO_EMAILS", "").split(",")
+            if item.strip()
+        }
+        self.telegram_login_enabled = os.getenv(
+            "REACHLY_TELEGRAM_LOGIN_ENABLED", "false"
+        ).lower() in ("1", "true", "yes")
 
         # Billing (optional).
         self.stripe_secret_key = os.getenv("REACHLY_STRIPE_SECRET_KEY", "")

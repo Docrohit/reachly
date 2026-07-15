@@ -1,15 +1,16 @@
 # AGENTS.md — Reachly Project Constitution
 
 > Single source of truth for AI tools and developers working on **Reachly** —
-> an AI thought-leadership autopilot for LinkedIn, X, and Instagram.
+> an AI thought-leadership autopilot for LinkedIn, X, Instagram, and Medium.
 > Read at the start of every session.
 
 ---
 
 ## Identity
 
-Reachly generates on-brand social posts daily for a business, optionally with
-AI images/video, and publishes via official APIs or headless browser (Playwright).
+Reachly generates on-brand social posts and long-form Medium articles daily for a
+business, optionally with AI images/video, and publishes via official APIs or
+headless browser (Playwright).
 
 **Stack:** Python 3.12 / FastAPI (SaaS + dashboard) / APScheduler / Playwright /
 Gemini (text + image) / optional Hygaar media API
@@ -47,7 +48,7 @@ Reachly is **separate from hdb_backend**. It may *call* Hygaar APIs; it must
 | **Strategy context** | `reachly/context.py`, `reachly/settings_store.py` | Goals + repo docs |
 | **LLM** | `reachly/llm.py` | Gemini / OpenAI / Anthropic |
 | **Media** | `reachly/media.py` | Gemini image, Hygaar client |
-| **Platforms** | `reachly/platforms/` | LinkedIn, X, Instagram (api + browser) |
+| **Platforms** | `reachly/platforms/` | LinkedIn, X, Instagram, Medium (api + browser) |
 | **Storage** | `reachly/storage.py` | SQLite post history |
 | **Dashboard** | `reachly/dashboard/` | Hygaar control panel |
 | **SaaS** | `server/` | Multi-tenant product (Telegram OTP, billing) |
@@ -59,6 +60,7 @@ Reachly is **separate from hdb_backend**. It may *call* Hygaar APIs; it must
 ```
 LinkedIn slots:  POST_TIMES           → 09:00, 13:30, 21:00 (Asia/Kolkata)
 Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_MINUTES=5)
+Medium slots:    MEDIUM_TIMES         → 10:30, 17:30 (independent of the social stagger)
 ```
 
 **Each LinkedIn slot:**
@@ -82,7 +84,17 @@ Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_M
 5. History recorded in SQLite
 ```
 
-**One-shot (`runner once`):** generates content, attaches image if Instagram enabled, posts all enabled platforms in one run.
+**Each Medium slot (independent):**
+
+```
+1. Scheduler fires at MEDIUM_TIMES (local TZ)
+2. Agent.build_medium_article() → LLM writes title + subtitle + 850–1300 word body + tags
+3. Generate a required 16:9 image (fails the slot if image generation fails)
+4. Post to Medium via browser (persistent session) as draft or public (MEDIUM_PUBLISH_STATUS)
+5. History recorded in SQLite; de-dupes against recent article openings
+```
+
+**One-shot (`runner once`):** generates content, attaches image if Instagram enabled, posts all enabled platforms in one run. Medium runs on its own slots (or `runner medium` to test).
 
 ---
 
@@ -116,8 +128,10 @@ Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_M
 | Context repo | `/var/www/html/dev-env/hdb_backend` |
 | Post times (LinkedIn) | 09:00, 13:30, 21:00 Asia/Kolkata |
 | Instagram offset | 5 min → 09:05, 13:35, 21:05 |
+| Medium times | 10:30, 17:30 Asia/Kolkata (independent slots) |
 | LinkedIn | browser mode, `LINKEDIN_POST_AS="HyGaar"` configured for company page; verify after UI changes |
 | Instagram | browser mode, `@hygaar.studios` — image from Gemini prompt |
+| Medium | browser mode, publishing **public** long-form articles with a 16:9 image |
 | X / Twitter | browser mode configured for `@hygaarstudios`; server login currently limited by X checkpoint |
 | Image gen | Gemini (`ATTACH_IMAGE=yes`; images generated at Instagram slot) |
 | Posting style | `brand_promoter` |
@@ -140,11 +154,12 @@ Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_M
 
 | File | Role |
 |---|---|
-| `reachly/agent.py` | Main harness (`run_linkedin_slot`, `run_instagram_slot`) |
+| `reachly/agent.py` | Main harness (`run_linkedin_slot`, `run_instagram_slot`, `run_medium_slot`) |
 | `reachly/context.py` | Load goals + AGENTS.md + product_theory |
 | `reachly/scheduler.py` | Staggered LinkedIn + Instagram cron jobs |
 | `reachly/platforms/linkedin.py` | API + browser posting |
 | `reachly/platforms/instagram.py` | API + browser posting (create flow selectors) |
+| `reachly/platforms/medium.py` | Browser posting of long-form articles (16:9 image, draft/public) |
 | `reachly/dashboard/app.py` | Hygaar dashboard |
 | `deploy/install_on_server.sh` | Server bootstrap |
 | `deploy/nginx/reach.hygaar.com.conf` | Public dashboard proxy |

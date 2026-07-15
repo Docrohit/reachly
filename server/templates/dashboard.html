@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · Reachly{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
+<h1>Reachly dashboard</h1>
+<p class="muted" style="margin-top:-8px">Configure your Hygaar-owned Reachly account, API credentials, schedule and publishing status.</p>
 
 {% if not user.is_active %}
 <div class="card" style="border-color:var(--brand)">
@@ -15,9 +16,12 @@
   <h2>Posting schedule</h2>
   <form method="post" action="/dashboard/settings">
     <div class="row">
-      <div><label>Daily post time (HH:MM)</label><input name="post_time" value="{{ user.post_time }}"/></div>
+      <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,13:30,21:00"/></div>
+      <div><label>Instagram offset minutes</label><input name="instagram_offset_minutes" type="number" min="0" max="240" value="{{ user.instagram_offset_minutes }}"/></div>
+      <div><label>Medium article slots</label><input name="medium_times" value="{{ user.medium_times }}" placeholder="09:30,14:30,19:30"/></div>
       <div><label>Timezone (IANA)</label><input name="timezone" value="{{ user.timezone }}"/></div>
     </div>
+    <input type="hidden" name="post_time" value="{{ user.post_time }}"/>
     <div class="row" style="margin-top:10px;align-items:center">
       <div><label>Attach an AI image</label>
         <select name="attach_image"><option value="on" {{ 'selected' if user.attach_image }}>Yes</option>
@@ -132,7 +136,7 @@
 </div>
 
 <div class="grid cols2">
-  {% for p in ['twitter','linkedin','instagram'] %}
+  {% for p in ['twitter','linkedin','instagram','medium'] %}
   <div class="card">
     <h2 style="text-transform:capitalize">{{ p }}
       <span class="pill {{ 'on' if cred_modes.get(p,'off')!='off' else 'off' }}">
@@ -161,6 +165,7 @@
       {% elif p=='linkedin' %}
         <label>Access token (API mode)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
         <label>Person URN (optional)</label><input name="person_urn" placeholder="urn:li:person:..."/>
+        <label>Organization ID (API mode, company page)</label><input name="organization_id" placeholder="123456789 or urn:li:organization:123456789"/>
         <label>Company page name (feed composer fallback)</label><input name="post_as" placeholder="Exact page name, e.g. HyGaar"/>
         <label>Company admin URL (browser mode preferred)</label>
         <input name="company_admin_url" placeholder="https://www.linkedin.com/company/.../admin/"/>
@@ -168,13 +173,23 @@
           <div><label>Email (browser mode)</label><input name="email"/></div>
           <div><label>Password (browser mode)</label><input name="password" type="password"/></div>
         </div>
-      {% else %}
+      {% elif p=='instagram' %}
         <label>Access token (API mode)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
         <label>IG user id (API mode)</label><input name="ig_user_id"/>
         <div class="row">
           <div><label>Username (browser mode)</label><input name="username"/></div>
           <div><label>Password (browser mode)</label><input name="password" type="password"/></div>
         </div>
+      {% else %}
+        <p class="muted">Medium browser mode is the reliable path today. API mode is intentionally disabled until a stable Medium publishing API is approved.</p>
+        <label>Email (browser mode)</label><input name="email"/>
+        <label>Password (browser mode)</label><input name="password" type="password"/>
+        <label>Publish status</label>
+        <select name="publish_status">
+          <option value="draft">Draft</option>
+          <option value="public">Public</option>
+        </select>
+        <label>Expected account guard</label><input name="expected_account" placeholder="Rohit Sharma or publication name"/>
       {% endif %}
       <button class="btn primary" style="margin-top:12px" type="submit">Save {{ p }}</button>
     </form>

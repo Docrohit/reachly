@@ -16,6 +16,10 @@ from .settings_store import (
 )
 
 
+def _parse_times(value: str) -> list[str]:
+    return [t.strip() for t in (value or "").split(",") if t.strip()]
+
+
 def main(argv=None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -23,9 +27,19 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="reachly", description="Reachly thought-leadership agent")
     parser.add_argument(
         "command",
-        choices=["once", "run", "preview", "linkedin", "instagram", "twitter", "analytics", "engage"],
+        choices=[
+            "once",
+            "run",
+            "preview",
+            "linkedin",
+            "instagram",
+            "twitter",
+            "medium",
+            "analytics",
+            "engage",
+        ],
         help=(
-            "once=all enabled | linkedin=LinkedIn only | instagram=IG test | twitter=X test | "
+            "once=all enabled | linkedin=LinkedIn only | instagram=IG test | twitter=X test | medium=Medium article | "
             "analytics=print recent performance context | run=scheduler | preview=dry-run"
         ),
     )
@@ -47,6 +61,7 @@ def main(argv=None) -> int:
     li_times = parse_post_times(cfg.post_times_raw, cfg.data_dir)
     ig_offset = parse_instagram_offset(cfg.instagram_offset_minutes, cfg.data_dir)
     ig_times = instagram_times_for(li_times, ig_offset)
+    medium_times = _parse_times(cfg.medium_times_raw)
 
     if args.command == "preview":
         agent.run_once(theme=args.theme)
@@ -76,6 +91,11 @@ def main(argv=None) -> int:
         agent.close()
         return 0
 
+    if args.command == "medium":
+        agent.run_medium_slot(theme=args.theme)
+        agent.close()
+        return 0
+
     if args.command == "engage":
         count = agent.engage_after_linkedin_post()
         print(f"LinkedIn engagement comments posted: {count}")
@@ -101,6 +121,7 @@ def main(argv=None) -> int:
         agent,
         linkedin_times=li_times,
         instagram_times=ig_times if agent.platforms[Platform.instagram].enabled else [],
+        medium_times=medium_times if agent.platforms[Platform.medium].enabled else [],
         timezone=cfg.timezone,
     )
     return 0
