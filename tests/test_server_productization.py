@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,7 +33,7 @@ class ServerProductizationTests(unittest.TestCase):
             env["REACHLY_DATABASE_URL"] = f"sqlite:///{db_path}"
             proc = subprocess.run(
                 [
-                    ".venv/bin/python",
+                    sys.executable,
                     "-c",
                     (
                         "from server.db import init_db, engine; "
@@ -57,7 +58,7 @@ class ServerProductizationTests(unittest.TestCase):
             env["REACHLY_DATABASE_URL"] = f"sqlite:///{db_path}"
             proc = subprocess.run(
                 [
-                    ".venv/bin/python",
+                    sys.executable,
                     "-c",
                     (
                         "from server.db import init_db, engine; "
@@ -176,7 +177,7 @@ class ServerProductizationTests(unittest.TestCase):
             env["REACHLY_HYGAAR_PRO_EMAILS"] = "rohitsharma@hygaar.com"
             proc = subprocess.run(
                 [
-                    ".venv/bin/python",
+                    sys.executable,
                     "-c",
                     (
                         "from unittest.mock import patch\n"
@@ -223,7 +224,7 @@ class ServerProductizationTests(unittest.TestCase):
             env["REACHLY_VAULT_KEY"] = "AbCdEfGhIjKlMnOpQrStUvWxYz01234567890123456="
             proc = subprocess.run(
                 [
-                    ".venv/bin/python",
+                    sys.executable,
                     "-c",
                     (
                         "from fastapi.testclient import TestClient\n"
@@ -319,7 +320,7 @@ class ServerProductizationTests(unittest.TestCase):
             env["REACHLY_ADMIN_TELEGRAM_IDS"] = "42"
             proc = subprocess.run(
                 [
-                    ".venv/bin/python",
+                    sys.executable,
                     "-c",
                     (
                         "from server.db import init_db, get_session, User\n"
@@ -348,7 +349,7 @@ class ServerProductizationTests(unittest.TestCase):
             env["REACHLY_TELEGRAM_BOT_TOKEN"] = "123:test"
             proc = subprocess.run(
                 [
-                    ".venv/bin/python",
+                    sys.executable,
                     "-c",
                     (
                         "import re\n"
