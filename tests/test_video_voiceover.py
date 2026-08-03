@@ -82,14 +82,15 @@ def test_agent_keeps_silent_video_when_openai_key_is_missing(tmp_path):
 def test_voiceover_script_is_short_and_dedupes_hook(tmp_path):
     agent = _agent(tmp_path)
     post = GeneratedPost(
-        theme="catalog ops",
-        hook="Catalog speed matters",
+        theme="beauty and home ecommerce",
+        hook="A long social hook that should not become the entire narration",
         body="Catalog speed matters. " + " ".join(["word"] * 120),
     )
 
-    script = agent._video_voiceover_script(post, max_words=12)
+    script = agent._video_voiceover_script(post, max_words=24)
 
-    assert script.startswith("Catalog speed matters.")
-    assert len(script.split()) <= 12
-    assert script.count("Catalog speed matters") == 1
+    assert script.startswith("For beauty and home brands")
+    assert "Hygaar turns" in script
+    assert "entire narration" not in script
+    assert len(script.split()) <= 24
     agent.close()

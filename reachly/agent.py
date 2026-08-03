@@ -559,19 +559,31 @@ class Agent:
             return media
 
     def _video_voiceover_script(self, post: GeneratedPost, *, max_words: int = 78) -> str:
-        hook = post.hook.strip().rstrip(".")
-        body = post.body.strip()
-        if body.lower().startswith(hook.lower()):
-            text = body
-        else:
-            text = f"{hook}. {body}"
+        business = self.business.name.strip() or "Hygaar"
+        theme = re.sub(r"[^a-zA-Z0-9 ]+", " ", post.theme).strip().lower()
+        audience = "ecommerce teams"
+        if "beauty" in theme and "home" in theme:
+            audience = "beauty and home brands"
+        elif "fashion" in theme:
+            audience = "fashion brands"
+        elif "catalog" in theme or "catalogue" in theme:
+            audience = "catalog teams"
+        text = (
+            f"For {audience}, content velocity is now a growth lever. "
+            f"{business} turns a small set of product references into catalogue images, "
+            "PDP visuals, marketplace assets, social creatives, and video ads at scale. "
+            "Launch more SKUs, keep every variant on brand, and replace repeated manual "
+            "shoots with an AI production workflow built for conversion."
+        )
+        if self.business.product_info:
+            text += f" {self.business.product_info[:180]}"
         text = re.sub(r"https?://\\S+", "", text)
         text = re.sub(r"#\\w+", "", text)
         text = re.sub(r"\\s+", " ", text).strip()
         words = text.split()
         if len(words) > max_words:
             text = " ".join(words[:max_words]).rstrip(".,;:") + "."
-        return text or hook or self.business.name
+        return text or f"{business} creates catalogue content at scale with AI."
 
     def _has_video(self, post: GeneratedPost) -> bool:
         return bool(post.media and post.media.kind == "video" and post.media.local_path)
