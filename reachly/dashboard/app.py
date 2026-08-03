@@ -5,15 +5,19 @@ Protected by REACHLY_DASHBOARD_TOKEN (query ?token= or header X-Reachly-Token).
 """
 from __future__ import annotations
 
+import io
 import logging
 import os
+import re
 import sqlite3
 import threading
+import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -27,6 +31,7 @@ from reachly.settings_store import (
     save_dashboard_settings,
     save_goals,
 )
+from reachly.storage import History
 
 logger = logging.getLogger("reachly.dashboard")
 BASE = Path(__file__).parent
@@ -72,6 +77,7 @@ def create_app() -> FastAPI:
             return templates.TemplateResponse(
                 request, "auth.html", {"error": None}, status_code=401
             )
+        asset_hours = _asset_hours(request.query_params.get("assets"))
         dash = load_dashboard_settings(cfg.data_dir)
         goals = load_goals(cfg.data_dir)
         strategy = load_strategy_context(
@@ -82,6 +88,7 @@ def create_app() -> FastAPI:
             posting_style=dash.get("posting_style", "thought_leader"),
         )
         logs = _recent_logs(cfg.data_dir)
+        assets = _recent_assets(cfg, hours=asset_hours)
         return templates.TemplateResponse(
             request,
             "hygaar.html",
@@ -92,6 +99,8 @@ def create_app() -> FastAPI:
                 "strategy_source": strategy.source,
                 "strategy_preview": strategy.for_prompt()[:2500],
                 "logs": logs,
+                "assets": assets,
+                "asset_hours": asset_hours,
                 "default_times": ", ".join(DEFAULT_POST_TIMES),
             },
         )
@@ -143,6 +152,60 @@ def create_app() -> FastAPI:
         threading.Thread(target=_job, daemon=True).start()
         return JSONResponse({"ok": True, "message": "Post job started. Refresh in ~60s for logs."})
 
+    @app.get("/assets/{post_id}/media")
+    def asset_media(
+        request: Request,
+        post_id: int,
+        download: bool = Query(False),
+    ):
+        if not _auth_ok(request, cfg):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        row = _asset_row_by_id(cfg.data_dir, post_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        path = _resolve_media_path(cfg, row.get("media_local_path") or "")
+        if not path:
+            raise HTTPException(status_code=404, detail="Asset file is no longer available")
+        filename = _download_filename(row, path)
+        disposition = "attachment" if download else "inline"
+        return FileResponse(
+            str(path),
+            media_type=_media_type(path, row.get("media_kind")),
+            filename=filename,
+            content_disposition_type=disposition,
+        )
+
+    @app.get("/assets/archive")
+    def asset_archive(request: Request, hours: int = Query(24)):
+        if not _auth_ok(request, cfg):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        asset_hours = _asset_hours(str(hours))
+        assets = _recent_assets(cfg, hours=asset_hours, limit=300)
+        buffer = io.BytesIO()
+        count = 0
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for asset in assets:
+                path = asset.get("resolved_path")
+                if path and Path(path).is_file():
+                    media_name = _download_filename(asset, Path(path))
+                    zf.write(path, f"media/{media_name}")
+                    count += 1
+                text = (asset.get("copy_text") or "").strip()
+                if text:
+                    zf.writestr(f"text/post_{asset['id']}.txt", text)
+        if count == 0:
+            raise HTTPException(status_code=404, detail="No downloadable assets in this window")
+        buffer.seek(0)
+        return Response(
+            content=buffer.getvalue(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="reachly_assets_last_{asset_hours}h.zip"'
+                )
+            },
+        )
+
     return app
 
 
@@ -159,6 +222,151 @@ def _recent_logs(data_dir: Path, limit: int = 15) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def _asset_hours(value: str | None) -> int:
+    try:
+        hours = int(value or "24")
+    except ValueError:
+        return 24
+    return 48 if hours == 48 else 24
+
+
+def _recent_assets(cfg: AgentConfig, *, hours: int = 24, limit: int = 150) -> list[dict]:
+    history = History(cfg.data_dir)
+    try:
+        rows = history.recent_media_assets(hours=hours, limit=limit)
+    finally:
+        history.close()
+
+    grouped: dict[str, dict] = {}
+    for row in rows:
+        key = row.get("media_local_path") or row.get("media_public_url") or str(row["id"])
+        asset = grouped.setdefault(
+            key,
+            {
+                **row,
+                "copy_text": _copy_text(row),
+                "platforms": [],
+                "resolved_path": None,
+                "file_exists": False,
+                "file_size": "",
+                "created_display": _display_time(row.get("created_at")),
+            },
+        )
+        asset["platforms"].append(
+            {
+                "platform": row.get("platform"),
+                "ok": bool(row.get("ok")),
+                "error": row.get("error"),
+            }
+        )
+        if row.get("ok") and not asset.get("ok"):
+            asset.update({k: row.get(k) for k in row.keys()})
+            asset["copy_text"] = _copy_text(row)
+        path = _resolve_media_path(cfg, row.get("media_local_path") or "")
+        if path and not asset["file_exists"]:
+            asset["resolved_path"] = str(path)
+            asset["file_exists"] = True
+            asset["file_size"] = _file_size(path)
+    return list(grouped.values())
+
+
+def _asset_row_by_id(data_dir: Path, post_id: int) -> dict | None:
+    history = History(data_dir)
+    history.close()
+    db = data_dir / "history.db"
+    if not db.is_file():
+        return None
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT id, created_at, theme, hook, body, platform, ok, permalink, error,
+               impressions, likes, comments, shares, analytics_note,
+               media_kind, media_local_path, media_public_url, media_prompt, post_text
+        FROM posts
+        WHERE id = ? AND media_kind IN ('image', 'video')
+        """,
+        (post_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _resolve_media_path(cfg: AgentConfig, raw_path: str) -> Path | None:
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    candidates = [path] if path.is_absolute() else [
+        Path.cwd() / path,
+        cfg.data_dir.parent / path,
+        cfg.data_dir / path,
+        cfg.data_dir / "media" / path.name,
+    ]
+    roots = [cfg.data_dir.resolve()]
+    if cfg.public_media_dir:
+        roots.append(Path(cfg.public_media_dir).expanduser().resolve())
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if not resolved.is_file():
+            continue
+        if any(resolved == root or root in resolved.parents for root in roots):
+            return resolved
+    return None
+
+
+def _copy_text(row: dict) -> str:
+    stored = (row.get("post_text") or "").strip()
+    if stored:
+        return stored
+    parts = [(row.get("hook") or "").strip(), "", (row.get("body") or "").strip()]
+    return "\n".join(part for part in parts if part is not None).strip()
+
+
+def _display_time(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M UTC")
+    except ValueError:
+        return value
+
+
+def _file_size(path: Path) -> str:
+    size = path.stat().st_size
+    if size >= 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    if size >= 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size} B"
+
+
+def _download_filename(row: dict, path: Path) -> str:
+    created = (row.get("created_at") or "").replace(":", "").replace("-", "")[:15]
+    theme = _safe_name(row.get("theme") or "reachly")
+    platform = _safe_name(row.get("platform") or "asset")
+    stem = "_".join(part for part in [created, platform, theme, str(row.get("id"))] if part)
+    return f"{stem}{path.suffix.lower() or '.bin'}"
+
+
+def _safe_name(value: str) -> str:
+    text = re.sub(r"[^a-zA-Z0-9]+", "_", value.strip().lower()).strip("_")
+    return text[:48] or "asset"
+
+
+def _media_type(path: Path, kind: str | None) -> str:
+    suffix = path.suffix.lower()
+    if kind == "video" or suffix in {".mp4", ".mov", ".webm"}:
+        return "video/mp4"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".webp":
+        return "image/webp"
+    return "image/png"
 
 
 def main() -> None:

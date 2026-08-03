@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 
 from reachly.agent import Agent, AgentSettings
 from reachly.models import BusinessProfile
@@ -116,6 +117,45 @@ def test_history_tracks_recent_image_post_references(tmp_path):
     ]
     assert rows[0]["media_local_path"] == str(high)
     assert rows[0]["media_prompt"] == "variant image"
+    history.close()
+
+
+def test_history_tracks_recent_media_assets_with_copy_text(tmp_path):
+    history = History(tmp_path)
+    image = tmp_path / "asset.png"
+    video = tmp_path / "asset.mp4"
+    image.write_text("image", encoding="utf-8")
+    video.write_text("video", encoding="utf-8")
+
+    history.record(
+        theme="catalog ops",
+        hook="Image hook",
+        body="Image body",
+        platform="linkedin",
+        ok=True,
+        media_kind="image",
+        media_local_path=str(image),
+        post_text="Copy-ready image post",
+    )
+    history.record(
+        theme="video ad",
+        hook="Video hook",
+        body="Video body",
+        platform="linkedin",
+        ok=True,
+        media_kind="video",
+        media_local_path=str(video),
+        post_text="Copy-ready video post",
+    )
+    old = (datetime.utcnow() - timedelta(hours=72)).isoformat()
+    history._conn.execute("UPDATE posts SET created_at = ? WHERE hook = ?", (old, "Image hook"))
+    history._conn.commit()
+
+    assets = history.recent_media_assets(hours=48)
+
+    assert [row["hook"] for row in assets] == ["Video hook"]
+    assert assets[0]["media_kind"] == "video"
+    assert assets[0]["post_text"] == "Copy-ready video post"
     history.close()
 
 

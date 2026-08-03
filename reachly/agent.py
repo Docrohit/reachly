@@ -778,6 +778,7 @@ class Agent:
                 media_local_path=media.local_path if media else None,
                 media_public_url=media.public_url if media else None,
                 media_prompt=media.prompt if media else None,
+                post_text=publish_post.for_platform(platform),
             )
             if result.ok:
                 logger.info("✓ %s posted: %s", platform.value, result.permalink or "(ok)")

@@ -45,6 +45,7 @@ class History:
                 "media_local_path": "TEXT",
                 "media_public_url": "TEXT",
                 "media_prompt": "TEXT",
+                "post_text": "TEXT",
             },
         )
         self._conn.commit()
@@ -93,7 +94,7 @@ class History:
         query = (
             "SELECT id, created_at, theme, hook, body, platform, ok, permalink, error, "
             "impressions, likes, comments, shares, analytics_note, "
-            "media_kind, media_local_path, media_public_url, media_prompt "
+            "media_kind, media_local_path, media_public_url, media_prompt, post_text "
             "FROM posts WHERE hook != ''"
         )
         params: list[object] = []
@@ -110,7 +111,7 @@ class History:
         query = (
             "SELECT id, created_at, theme, hook, body, platform, ok, permalink, error, "
             "impressions, likes, comments, shares, analytics_note, "
-            "media_kind, media_local_path, media_public_url, media_prompt "
+            "media_kind, media_local_path, media_public_url, media_prompt, post_text "
             "FROM posts "
             "WHERE ok = 1 AND media_kind = 'image' "
             "AND (COALESCE(media_public_url, '') != '' OR COALESCE(media_local_path, '') != '')"
@@ -130,6 +131,25 @@ class History:
             cur = self._conn.execute(query, params)
             return [_row_to_dict(row) for row in cur.fetchall()]
 
+    def recent_media_assets(self, *, hours: int = 24, limit: int = 150) -> list[dict]:
+        cutoff = (datetime.utcnow() - timedelta(hours=max(1, min(int(hours), 168)))).isoformat()
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT id, created_at, theme, hook, body, platform, ok, permalink, error,
+                       impressions, likes, comments, shares, analytics_note,
+                       media_kind, media_local_path, media_public_url, media_prompt, post_text
+                FROM posts
+                WHERE created_at >= ?
+                  AND media_kind IN ('image', 'video')
+                  AND (COALESCE(media_public_url, '') != '' OR COALESCE(media_local_path, '') != '')
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (cutoff, max(1, min(int(limit), 500))),
+            )
+            return [_row_to_dict(row) for row in cur.fetchall()]
+
     def analytics_summary(self, *, days: int = 14, limit: int = 12) -> str:
         cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
         with self._lock:
@@ -137,7 +157,7 @@ class History:
                 """
                 SELECT id, created_at, theme, hook, body, platform, ok, permalink, error,
                        impressions, likes, comments, shares, analytics_note,
-                       media_kind, media_local_path, media_public_url, media_prompt
+                       media_kind, media_local_path, media_public_url, media_prompt, post_text
                 FROM posts
                 WHERE created_at >= ? AND ok = 1
                 ORDER BY id DESC
@@ -194,13 +214,14 @@ class History:
         media_local_path: str | None = None,
         media_public_url: str | None = None,
         media_prompt: str | None = None,
+        post_text: str | None = None,
     ) -> None:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO posts (created_at, theme, hook, body, platform, ok, permalink, error, "
                 "impressions, likes, comments, shares, analytics_note, "
-                "media_kind, media_local_path, media_public_url, media_prompt) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "media_kind, media_local_path, media_public_url, media_prompt, post_text) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     datetime.utcnow().isoformat(),
                     theme,
@@ -219,6 +240,7 @@ class History:
                     media_local_path,
                     media_public_url,
                     media_prompt,
+                    post_text,
                 ),
             )
             self._conn.commit()
@@ -292,6 +314,7 @@ def _row_to_dict(row: tuple) -> dict:
         "media_local_path",
         "media_public_url",
         "media_prompt",
+        "post_text",
     ]
     return dict(zip(keys, row))
 
