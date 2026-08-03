@@ -78,6 +78,7 @@ class AgentConfig:
         self.gemini_api_key = env.get("GEMINI_API_KEY") or None
         self.openai_api_key = env.get("OPENAI_API_KEY") or None
         self.anthropic_api_key = env.get("ANTHROPIC_API_KEY") or None
+        self.elevenlabs_api_key = env.get("ELEVENLABS_API_KEY") or None
 
         # Media
         self.image_provider = (env.get("IMAGE_PROVIDER") or "none").lower()
@@ -104,10 +105,26 @@ class AgentConfig:
         self.seedance_watermark = _bool(env.get("SEEDANCE_WATERMARK"), False)
         self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), True)
         self.video_voiceover_provider = (
-            env.get("REACHLY_VIDEO_VOICEOVER_PROVIDER") or "openai"
+            env.get("REACHLY_VIDEO_VOICEOVER_PROVIDER") or "elevenlabs"
         ).lower()
         self.video_voiceover_model = env.get("REACHLY_VIDEO_VOICEOVER_MODEL") or "tts-1"
         self.video_voiceover_voice = env.get("REACHLY_VIDEO_VOICEOVER_VOICE") or "alloy"
+        self.elevenlabs_voice_id = (
+            env.get("REACHLY_ELEVENLABS_VOICE_ID")
+            or env.get("ELEVENLABS_VOICE_ID")
+            or "JBFqnCBsd6RMkjVDRZzb"
+        )
+        self.elevenlabs_model = (
+            env.get("REACHLY_ELEVENLABS_MODEL")
+            or env.get("ELEVENLABS_MODEL_ID")
+            or "eleven_v3"
+        )
+        self.elevenlabs_output_format = (
+            env.get("REACHLY_ELEVENLABS_OUTPUT_FORMAT") or "mp3_44100_128"
+        )
+        self.spoken_brand_name = env.get("REACHLY_SPOKEN_BRAND_NAME") or (
+            "Haigaar" if self.business.name.strip().lower() == "hygaar" else self.business.name
+        )
         self.daily_media_plan = _media_plan(env.get("REACHLY_DAILY_MEDIA_PLAN"))
         if not self.daily_media_plan and self.video_provider != "none":
             self.daily_media_plan = ["image", "image", "image", "video", "video"]

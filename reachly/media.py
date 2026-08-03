@@ -267,6 +267,103 @@ def add_openai_voiceover(
     )
 
 
+def add_elevenlabs_voiceover(
+    media: GeneratedMedia,
+    script: str,
+    *,
+    api_key: str,
+    out_dir: Path,
+    voice_id: str = "JBFqnCBsd6RMkjVDRZzb",
+    model_id: str = "eleven_v3",
+    output_format: str = "mp3_44100_128",
+) -> GeneratedMedia:
+    """Generate ElevenLabs TTS and mux it into a video file."""
+    if not api_key:
+        raise ValueError("ElevenLabs API key is required for video voiceover.")
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise RuntimeError("ffmpeg and ffprobe are required for video voiceover.")
+
+    video_path = Path(media.local_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = out_dir / f"voiceover_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp3"
+    voiced_path = out_dir / f"{video_path.stem}_elevenlabs_{uuid.uuid4().hex[:8]}.mp4"
+
+    resp = requests.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+        params={"output_format": output_format},
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+        },
+        json={
+            "text": script[:3000],
+            "model_id": model_id,
+        },
+        timeout=120,
+    )
+    if resp.status_code >= 300:
+        raise RuntimeError(f"ElevenLabs TTS failed ({resp.status_code}): {resp.text[:300]}")
+    audio_path.write_bytes(resp.content)
+
+    return _mux_audio_into_video(
+        media,
+        audio_path,
+        voiced_path,
+        prompt=media.prompt,
+    )
+
+
+def _mux_audio_into_video(
+    media: GeneratedMedia,
+    audio_path: Path,
+    voiced_path: Path,
+    *,
+    prompt: str | None,
+) -> GeneratedMedia:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for video voiceover.")
+    video_path = Path(media.local_path)
+    duration = _video_duration(video_path)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-ar",
+        "44100",
+        "-t",
+        f"{duration:.3f}",
+        "-movflags",
+        "+faststart",
+        str(voiced_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg voiceover mux failed: {result.stderr[-500:]}")
+    return GeneratedMedia(
+        kind="video",
+        local_path=str(voiced_path),
+        public_url=None,
+        mime_type="video/mp4",
+        prompt=prompt,
+    )
+
+
 def _video_duration(path: Path) -> float:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:

@@ -32,6 +32,7 @@ from .llm import LLMClient
 from .media import (
     HygaarClient,
     SeedanceClient,
+    add_elevenlabs_voiceover,
     add_openai_voiceover,
     generate_image_gemini,
     video_has_audio,
@@ -57,6 +58,7 @@ class AgentSettings:
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    elevenlabs_api_key: Optional[str] = None
 
     image_provider: str = "none"          # gemini | hygaar | none
     gemini_image_model: str = "gemini-2.5-flash-image"
@@ -74,9 +76,13 @@ class AgentSettings:
     seedance_generate_audio: bool = True
     seedance_watermark: bool = False
     video_voiceover_enabled: bool = True
-    video_voiceover_provider: str = "openai"
+    video_voiceover_provider: str = "elevenlabs"
     video_voiceover_model: str = "tts-1"
     video_voiceover_voice: str = "alloy"
+    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_model: str = "eleven_v3"
+    elevenlabs_output_format: str = "mp3_44100_128"
+    spoken_brand_name: Optional[str] = None
     daily_media_plan: list[str] = field(default_factory=list)
     brand_logo_path: Optional[str] = None
     brand_logo_position: str = "bottom-right"
@@ -154,6 +160,7 @@ class Agent:
             gemini_api_key=cfg.gemini_api_key,
             openai_api_key=cfg.openai_api_key,
             anthropic_api_key=cfg.anthropic_api_key,
+            elevenlabs_api_key=cfg.elevenlabs_api_key,
             image_provider=cfg.image_provider,
             gemini_image_model=cfg.gemini_image_model,
             video_provider=cfg.video_provider,
@@ -173,6 +180,10 @@ class Agent:
             video_voiceover_provider=cfg.video_voiceover_provider,
             video_voiceover_model=cfg.video_voiceover_model,
             video_voiceover_voice=cfg.video_voiceover_voice,
+            elevenlabs_voice_id=cfg.elevenlabs_voice_id,
+            elevenlabs_model=cfg.elevenlabs_model,
+            elevenlabs_output_format=cfg.elevenlabs_output_format,
+            spoken_brand_name=cfg.spoken_brand_name,
             daily_media_plan=cfg.daily_media_plan,
             brand_logo_path=cfg.brand_logo_path,
             brand_logo_position=cfg.brand_logo_position,
@@ -530,7 +541,8 @@ class Agent:
     ) -> GeneratedMedia:
         if not self.settings.video_voiceover_enabled:
             return media
-        if self.settings.video_voiceover_provider != "openai":
+        provider = self.settings.video_voiceover_provider
+        if provider not in {"elevenlabs", "openai"}:
             return media
         video_path = Path(media.local_path)
         if not video_path.is_file():
@@ -538,28 +550,57 @@ class Agent:
         try:
             if video_has_audio(video_path):
                 return media
-            if not self.settings.openai_api_key:
-                logger.warning(
-                    "Generated video is silent and OPENAI_API_KEY is not set; using original video."
-                )
-                return media
-            script = self._video_voiceover_script(post)
-            voiced = add_openai_voiceover(
-                media,
-                script,
-                api_key=self.settings.openai_api_key,
-                out_dir=self.settings.data_dir / "media",
-                model=self.settings.video_voiceover_model,
-                voice=self.settings.video_voiceover_voice,
+            expressive_voiceover = (
+                provider == "elevenlabs"
+                and self.settings.elevenlabs_model.strip().lower() == "eleven_v3"
             )
+            script = self._video_voiceover_script(post, expressive=expressive_voiceover)
+            if provider == "elevenlabs":
+                if not self.settings.elevenlabs_api_key:
+                    logger.warning(
+                        "Generated video is silent and ELEVENLABS_API_KEY is not set; "
+                        "using original video."
+                    )
+                    return media
+                voiced = add_elevenlabs_voiceover(
+                    media,
+                    script,
+                    api_key=self.settings.elevenlabs_api_key,
+                    out_dir=self.settings.data_dir / "media",
+                    voice_id=self.settings.elevenlabs_voice_id,
+                    model_id=self.settings.elevenlabs_model,
+                    output_format=self.settings.elevenlabs_output_format,
+                )
+            else:
+                if not self.settings.openai_api_key:
+                    logger.warning(
+                        "Generated video is silent and OPENAI_API_KEY is not set; using original video."
+                    )
+                    return media
+                voiced = add_openai_voiceover(
+                    media,
+                    script,
+                    api_key=self.settings.openai_api_key,
+                    out_dir=self.settings.data_dir / "media",
+                    model=self.settings.video_voiceover_model,
+                    voice=self.settings.video_voiceover_voice,
+                )
             logger.info("Added voiceover to generated video: %s", voiced.local_path)
             return voiced
         except Exception as e:  # noqa: BLE001
             logger.warning("Could not add video voiceover; using original silent video (%s).", e)
             return media
 
-    def _video_voiceover_script(self, post: GeneratedPost, *, max_words: int = 78) -> str:
-        business = self.business.name.strip() or "Hygaar"
+    def _video_voiceover_script(
+        self,
+        post: GeneratedPost,
+        *,
+        max_words: int = 78,
+        expressive: bool = False,
+    ) -> str:
+        business = (self.settings.spoken_brand_name or self.business.name).strip() or "Haigaar"
+        if business.lower() == "hygaar":
+            business = "Haigaar"
         theme = re.sub(r"[^a-zA-Z0-9 ]+", " ", post.theme).strip().lower()
         audience = "ecommerce teams"
         if "beauty" in theme and "home" in theme:
@@ -571,8 +612,8 @@ class Agent:
         text = (
             f"For {audience}, content velocity is now a growth lever. "
             f"{business} turns a small set of product references into catalogue images, "
-            "PDP visuals, marketplace assets, social creatives, and video ads at scale. "
-            "Launch more SKUs, keep every variant on brand, and replace repeated manual "
+            "product page visuals, marketplace assets, social creatives, and video ads at scale. "
+            "Launch more products, keep every variant on brand, and replace repeated manual "
             "shoots with an AI production workflow built for conversion."
         )
         if self.business.product_info:
@@ -583,6 +624,12 @@ class Agent:
         words = text.split()
         if len(words) > max_words:
             text = " ".join(words[:max_words]).rstrip(".,;:") + "."
+        if expressive and text:
+            text = (
+                "[confident, warm commercial narrator]\n"
+                f"{text} [short pause]\n"
+                "[with conviction] Move from one-off shoots to a repeatable content system."
+            )
         return text or f"{business} creates catalogue content at scale with AI."
 
     def _has_video(self, post: GeneratedPost) -> bool:
