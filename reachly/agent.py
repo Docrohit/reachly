@@ -17,6 +17,7 @@ import json
 import hashlib
 import logging
 import mimetypes
+import re
 import shutil
 import threading
 from dataclasses import dataclass, field
@@ -28,7 +29,13 @@ from .config import AgentConfig
 from .content import generate_engagement_comment, generate_medium_article, generate_post, pick_theme
 from .context import load_strategy_context
 from .llm import LLMClient
-from .media import HygaarClient, SeedanceClient, generate_image_gemini
+from .media import (
+    HygaarClient,
+    SeedanceClient,
+    add_openai_voiceover,
+    generate_image_gemini,
+    video_has_audio,
+)
 from .models import (
     BusinessProfile,
     GeneratedMedia,
@@ -66,6 +73,10 @@ class AgentSettings:
     seedance_clip_duration: int = 15
     seedance_generate_audio: bool = True
     seedance_watermark: bool = False
+    video_voiceover_enabled: bool = True
+    video_voiceover_provider: str = "openai"
+    video_voiceover_model: str = "tts-1"
+    video_voiceover_voice: str = "alloy"
     daily_media_plan: list[str] = field(default_factory=list)
     brand_logo_path: Optional[str] = None
     brand_logo_position: str = "bottom-right"
@@ -158,6 +169,10 @@ class Agent:
             seedance_clip_duration=cfg.seedance_clip_duration,
             seedance_generate_audio=cfg.seedance_generate_audio,
             seedance_watermark=cfg.seedance_watermark,
+            video_voiceover_enabled=cfg.video_voiceover_enabled,
+            video_voiceover_provider=cfg.video_voiceover_provider,
+            video_voiceover_model=cfg.video_voiceover_model,
+            video_voiceover_voice=cfg.video_voiceover_voice,
             daily_media_plan=cfg.daily_media_plan,
             brand_logo_path=cfg.brand_logo_path,
             brand_logo_position=cfg.brand_logo_position,
@@ -502,10 +517,61 @@ class Agent:
         prompt = self._video_prompt_for_post(post, creative)
         try:
             post.media = self._generate_video(prompt, reference_images=creative.reference_images)
+            post.media = self._add_video_voiceover_if_needed(post, post.media)
         except Exception as e:  # noqa: BLE001
             self._last_video_error = str(e)
             logger.warning("Video generation failed (%s).", e)
         return post
+
+    def _add_video_voiceover_if_needed(
+        self,
+        post: GeneratedPost,
+        media: GeneratedMedia,
+    ) -> GeneratedMedia:
+        if not self.settings.video_voiceover_enabled:
+            return media
+        if self.settings.video_voiceover_provider != "openai":
+            return media
+        video_path = Path(media.local_path)
+        if not video_path.is_file():
+            return media
+        try:
+            if video_has_audio(video_path):
+                return media
+            if not self.settings.openai_api_key:
+                logger.warning(
+                    "Generated video is silent and OPENAI_API_KEY is not set; using original video."
+                )
+                return media
+            script = self._video_voiceover_script(post)
+            voiced = add_openai_voiceover(
+                media,
+                script,
+                api_key=self.settings.openai_api_key,
+                out_dir=self.settings.data_dir / "media",
+                model=self.settings.video_voiceover_model,
+                voice=self.settings.video_voiceover_voice,
+            )
+            logger.info("Added voiceover to generated video: %s", voiced.local_path)
+            return voiced
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Could not add video voiceover; using original silent video (%s).", e)
+            return media
+
+    def _video_voiceover_script(self, post: GeneratedPost, *, max_words: int = 78) -> str:
+        hook = post.hook.strip().rstrip(".")
+        body = post.body.strip()
+        if body.lower().startswith(hook.lower()):
+            text = body
+        else:
+            text = f"{hook}. {body}"
+        text = re.sub(r"https?://\\S+", "", text)
+        text = re.sub(r"#\\w+", "", text)
+        text = re.sub(r"\\s+", " ", text).strip()
+        words = text.split()
+        if len(words) > max_words:
+            text = " ".join(words[:max_words]).rstrip(".,;:") + "."
+        return text or hook or self.business.name
 
     def _has_video(self, post: GeneratedPost) -> bool:
         return bool(post.media and post.media.kind == "video" and post.media.local_path)

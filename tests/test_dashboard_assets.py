@@ -22,6 +22,26 @@ def test_dashboard_lists_and_downloads_recent_assets(tmp_path):
         media_local_path=str(image),
         post_text="Copy-ready dashboard text",
     )
+    history.record(
+        theme="catalog ops",
+        hook="Use generated assets everywhere",
+        body="Body",
+        platform="instagram",
+        ok=False,
+        media_kind="image",
+        media_local_path=str(image),
+        post_text="Copy-ready dashboard text",
+    )
+    history.record(
+        theme="catalog ops",
+        hook="Use generated assets everywhere",
+        body="Body",
+        platform="instagram",
+        ok=False,
+        media_kind="image",
+        media_local_path=str(image),
+        post_text="Copy-ready dashboard text",
+    )
     history.close()
 
     dashboard_app._cfg = AgentConfig(
@@ -38,6 +58,8 @@ def test_dashboard_lists_and_downloads_recent_assets(tmp_path):
         assert "Creative assets" in page.text
         assert "Copy-ready dashboard text" in page.text
         assert "/assets/1/media" in page.text
+        assert "linkedin ok" in page.text
+        assert "instagram fail x2" in page.text
 
         download = client.get("/assets/1/media?download=true")
         assert download.status_code == 200

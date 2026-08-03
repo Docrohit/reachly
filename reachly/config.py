@@ -102,6 +102,12 @@ class AgentConfig:
         self.seedance_clip_duration = _int(env.get("SEEDANCE_CLIP_DURATION"), 15)
         self.seedance_generate_audio = _bool(env.get("SEEDANCE_GENERATE_AUDIO"), True)
         self.seedance_watermark = _bool(env.get("SEEDANCE_WATERMARK"), False)
+        self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), True)
+        self.video_voiceover_provider = (
+            env.get("REACHLY_VIDEO_VOICEOVER_PROVIDER") or "openai"
+        ).lower()
+        self.video_voiceover_model = env.get("REACHLY_VIDEO_VOICEOVER_MODEL") or "tts-1"
+        self.video_voiceover_voice = env.get("REACHLY_VIDEO_VOICEOVER_VOICE") or "alloy"
         self.daily_media_plan = _media_plan(env.get("REACHLY_DAILY_MEDIA_PLAN"))
         if not self.daily_media_plan and self.video_provider != "none":
             self.daily_media_plan = ["image", "image", "image", "video", "video"]

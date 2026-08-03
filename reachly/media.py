@@ -163,6 +163,137 @@ def _seedance_audio_policy_error(error: Exception) -> bool:
     return "outputaudiosensitivecontentdetected" in text or "output audio" in text
 
 
+def video_has_audio(path: str | Path) -> bool:
+    """Return True when ffprobe sees at least one audio stream."""
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return True
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def add_openai_voiceover(
+    media: GeneratedMedia,
+    script: str,
+    *,
+    api_key: str,
+    out_dir: Path,
+    model: str = "tts-1",
+    voice: str = "alloy",
+) -> GeneratedMedia:
+    """Generate a short TTS voiceover and mux it into a video file."""
+    if not api_key:
+        raise ValueError("OpenAI API key is required for video voiceover.")
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise RuntimeError("ffmpeg and ffprobe are required for video voiceover.")
+
+    video_path = Path(media.local_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = out_dir / f"voiceover_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp3"
+    voiced_path = out_dir / f"{video_path.stem}_voiced_{uuid.uuid4().hex[:8]}.mp4"
+
+    resp = requests.post(
+        "https://api.openai.com/v1/audio/speech",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "voice": voice,
+            "input": script[:4000],
+            "response_format": "mp3",
+        },
+        timeout=120,
+    )
+    if resp.status_code >= 300:
+        raise RuntimeError(f"OpenAI TTS failed ({resp.status_code}): {resp.text[:300]}")
+    audio_path.write_bytes(resp.content)
+
+    duration = _video_duration(video_path)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-ar",
+        "44100",
+        "-t",
+        f"{duration:.3f}",
+        "-movflags",
+        "+faststart",
+        str(voiced_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg voiceover mux failed: {result.stderr[-500:]}")
+
+    return GeneratedMedia(
+        kind="video",
+        local_path=str(voiced_path),
+        public_url=None,
+        mime_type="video/mp4",
+        prompt=media.prompt,
+    )
+
+
+def _video_duration(path: Path) -> float:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise RuntimeError("ffprobe is required to inspect video duration.")
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffprobe duration failed: {result.stderr[-300:]}")
+    try:
+        return max(1.0, float(result.stdout.strip()))
+    except ValueError as exc:
+        raise RuntimeError(f"Could not parse video duration: {result.stdout!r}") from exc
+
+
 # ----------------------------------------------------------------------
 # Gemini image generation (Nano Banana)
 # ----------------------------------------------------------------------

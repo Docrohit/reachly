@@ -269,19 +269,14 @@ def _recent_assets(cfg: AgentConfig, *, hours: int = 24, limit: int = 150) -> li
                 **row,
                 "copy_text": _copy_text(row),
                 "platforms": [],
+                "_platform_summary": {},
                 "resolved_path": None,
                 "file_exists": False,
                 "file_size": "",
                 "created_display": _display_time(row.get("created_at")),
             },
         )
-        asset["platforms"].append(
-            {
-                "platform": row.get("platform"),
-                "ok": bool(row.get("ok")),
-                "error": row.get("error"),
-            }
-        )
+        _add_platform_summary(asset, row)
         if row.get("ok") and not asset.get("ok"):
             asset.update({k: row.get(k) for k in row.keys()})
             asset["copy_text"] = _copy_text(row)
@@ -290,7 +285,51 @@ def _recent_assets(cfg: AgentConfig, *, hours: int = 24, limit: int = 150) -> li
             asset["resolved_path"] = str(path)
             asset["file_exists"] = True
             asset["file_size"] = _file_size(path)
-    return list(grouped.values())
+    assets = list(grouped.values())
+    for asset in assets:
+        summaries = asset.pop("_platform_summary", {})
+        asset["platforms"] = [_platform_label(summary) for summary in summaries.values()]
+    return assets
+
+
+def _add_platform_summary(asset: dict, row: dict) -> None:
+    platform = row.get("platform") or "unknown"
+    summaries = asset.setdefault("_platform_summary", {})
+    summary = summaries.setdefault(
+        platform,
+        {
+            "platform": platform,
+            "ok_count": 0,
+            "fail_count": 0,
+            "error": "",
+        },
+    )
+    if row.get("ok"):
+        summary["ok_count"] += 1
+    else:
+        summary["fail_count"] += 1
+        summary["error"] = row.get("error") or summary["error"]
+
+
+def _platform_label(summary: dict) -> dict:
+    platform = summary["platform"]
+    ok_count = int(summary.get("ok_count") or 0)
+    fail_count = int(summary.get("fail_count") or 0)
+    ok = ok_count > 0
+    if ok and fail_count:
+        label = f"{platform} ok ({fail_count} retry fail{'s' if fail_count != 1 else ''})"
+    elif ok:
+        label = f"{platform} ok"
+    else:
+        label = f"{platform} fail"
+        if fail_count > 1:
+            label = f"{label} x{fail_count}"
+    return {
+        "platform": platform,
+        "ok": ok,
+        "label": label,
+        "error": summary.get("error"),
+    }
 
 
 def _asset_row_by_id(data_dir: Path, post_id: int) -> dict | None:

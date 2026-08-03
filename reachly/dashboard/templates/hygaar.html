@@ -116,7 +116,7 @@
           <div>
             <span class="pill">{{ asset.media_kind }}</span>
             {% for p in asset.platforms %}
-              <span class="pill {{ 'ok' if p.ok else 'bad' }}">{{ p.platform }} {{ 'ok' if p.ok else 'fail' }}</span>
+              <span class="pill {{ 'ok' if p.ok else 'bad' }}" title="{{ p.error or '' }}">{{ p.label }}</span>
             {% endfor %}
           </div>
           <p class="muted">{{ asset.created_display }} · {{ asset.theme }}</p>
