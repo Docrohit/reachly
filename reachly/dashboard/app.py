@@ -110,7 +110,7 @@ def create_app() -> FastAPI:
         request: Request,
         goals: str = Form(""),
         posting_style: str = Form("thought_leader"),
-        post_times: str = Form("09:00,13:30,21:00"),
+        post_times: str = Form("09:00,12:00,15:00,18:00,21:00"),
         instagram_offset_minutes: int = Form(5),
         context_repo: str = Form(""),
     ):

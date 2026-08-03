@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 
-DEFAULT_POST_TIMES = ["09:00", "13:30", "21:00"]
+DEFAULT_POST_TIMES = ["09:00", "12:00", "15:00", "18:00", "21:00"]
 DEFAULT_INSTAGRAM_OFFSET_MINUTES = 5
 
 

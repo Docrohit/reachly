@@ -26,6 +26,24 @@ def _split(value: Optional[str]) -> list[str]:
     return [v.strip() for v in value.split(",") if v.strip()]
 
 
+def _bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None or str(value).strip() == "":
+        return default
+    return str(value).lower() in ("1", "yes", "true")
+
+
+def _int(value: Optional[str], default: int) -> int:
+    try:
+        return int(value) if value not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _media_plan(value: Optional[str]) -> list[str]:
+    allowed = {"image", "video"}
+    return [item for item in (v.lower() for v in _split(value)) if item in allowed]
+
+
 def _hashtags(value: Optional[str]) -> list[str]:
     out: list[str] = []
     for raw in (value or "").replace(",", " ").split():
@@ -67,17 +85,38 @@ class AgentConfig:
         self.video_provider = (env.get("VIDEO_PROVIDER") or "none").lower()
         self.hygaar_base_url = env.get("HYGAAR_BASE_URL") or None
         self.hygaar_api_token = env.get("HYGAAR_API_TOKEN") or None
+        self.seedance_api_key = (
+            env.get("SEEDANCE_API_KEY")
+            or env.get("ARK_API_KEY")
+            or env.get("MODELARK_API_KEY")
+            or None
+        )
+        self.seedance_base_url = (
+            env.get("SEEDANCE_BASE_URL") or "https://ark.ap-southeast.bytepluses.com/api/v3"
+        )
+        self.seedance_model = env.get("SEEDANCE_MODEL") or "seedance_2_5"
+        self.seedance_fallback_model = env.get("SEEDANCE_FALLBACK_MODEL") or "seedance_2_0"
+        self.seedance_ratio = env.get("SEEDANCE_RATIO") or "9:16"
+        self.seedance_target_duration = _int(env.get("SEEDANCE_TARGET_DURATION"), 30)
+        self.seedance_clip_count = _int(env.get("SEEDANCE_CLIP_COUNT"), 0)
+        self.seedance_clip_duration = _int(env.get("SEEDANCE_CLIP_DURATION"), 15)
+        self.seedance_generate_audio = _bool(env.get("SEEDANCE_GENERATE_AUDIO"), True)
+        self.seedance_watermark = _bool(env.get("SEEDANCE_WATERMARK"), False)
+        self.daily_media_plan = _media_plan(env.get("REACHLY_DAILY_MEDIA_PLAN"))
+        if not self.daily_media_plan and self.video_provider != "none":
+            self.daily_media_plan = ["image", "image", "image", "video", "video"]
         self.brand_logo_path = env.get("BRAND_LOGO_PATH") or None
         self.brand_logo_position = env.get("BRAND_LOGO_POSITION") or "bottom-right"
 
         # Behaviour
-        self.attach_image = (env.get("ATTACH_IMAGE") or "yes").lower() in ("1", "yes", "true")
-        self.dry_run = (env.get("DRY_RUN") or "yes").lower() in ("1", "yes", "true")
+        self.attach_image = _bool(env.get("ATTACH_IMAGE"), True)
+        self.dry_run = _bool(env.get("DRY_RUN"), True)
         self.timezone = env.get("TIMEZONE") or "UTC"
         self.post_time = env.get("POST_TIME") or "09:30"
         self.post_times_raw = env.get("POST_TIMES") or ""
         self.instagram_offset_minutes = env.get("INSTAGRAM_OFFSET_MINUTES") or "5"
         self.public_media_base_url = env.get("PUBLIC_MEDIA_BASE_URL") or None
+        self.public_media_dir = env.get("PUBLIC_MEDIA_DIR") or None
 
         # Strategy context (Hygaar: point at hdb_backend on server)
         self.context_repo = env.get("REACHLY_CONTEXT_REPO") or None
@@ -86,11 +125,9 @@ class AgentConfig:
         self.posting_style = env.get("REACHLY_POSTING_STYLE") or "thought_leader"
         self.dashboard_token = env.get("REACHLY_DASHBOARD_TOKEN") or None
         self.dashboard_port = int(env.get("REACHLY_DASHBOARD_PORT") or "8765")
-        self.enable_engagement = (
-            env.get("REACHLY_ENABLE_ENGAGEMENT") or "no"
-        ).lower() in ("1", "yes", "true")
-        self.engagement_delay_minutes = int(env.get("REACHLY_ENGAGEMENT_DELAY_MINUTES") or "30")
-        self.engagement_max_comments = int(env.get("REACHLY_ENGAGEMENT_MAX_COMMENTS") or "3")
+        self.enable_engagement = _bool(env.get("REACHLY_ENABLE_ENGAGEMENT"), False)
+        self.engagement_delay_minutes = _int(env.get("REACHLY_ENGAGEMENT_DELAY_MINUTES"), 30)
+        self.engagement_max_comments = _int(env.get("REACHLY_ENGAGEMENT_MAX_COMMENTS"), 3)
         self.text_platform_image_rate = float(env.get("REACHLY_TEXT_PLATFORM_IMAGE_RATE") or "0.5")
         self.linkedin_image_rate = (
             float(env["REACHLY_LINKEDIN_IMAGE_RATE"])

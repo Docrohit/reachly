@@ -69,6 +69,56 @@ def test_history_migrates_and_summarizes_analytics(tmp_path):
     history.close()
 
 
+def test_history_tracks_recent_image_post_references(tmp_path):
+    history = History(tmp_path)
+    low = tmp_path / "low.png"
+    high = tmp_path / "high.png"
+    low.write_text("low", encoding="utf-8")
+    high.write_text("high", encoding="utf-8")
+    history.record(
+        theme="catalog ops",
+        hook="Static catalog work does not scale",
+        body="Body",
+        platform="linkedin",
+        ok=True,
+        likes=1,
+        media_kind="image",
+        media_local_path=str(low),
+        media_prompt="catalog image",
+    )
+    history.record(
+        theme="variant launch",
+        hook="Launch variants without reshooting every SKU",
+        body="Body",
+        platform="linkedin",
+        ok=True,
+        likes=10,
+        comments=2,
+        media_kind="image",
+        media_local_path=str(high),
+        media_prompt="variant image",
+    )
+    history.record(
+        theme="video",
+        hook="Video record should not be selected",
+        body="Body",
+        platform="linkedin",
+        ok=True,
+        media_kind="video",
+        media_local_path=str(tmp_path / "video.mp4"),
+    )
+
+    rows = history.recent_image_posts(limit=2)
+
+    assert [row["hook"] for row in rows] == [
+        "Launch variants without reshooting every SKU",
+        "Static catalog work does not scale",
+    ]
+    assert rows[0]["media_local_path"] == str(high)
+    assert rows[0]["media_prompt"] == "variant image"
+    history.close()
+
+
 def test_agent_theme_selection_avoids_recent_successful_themes(tmp_path):
     agent = Agent(
         BusinessProfile(

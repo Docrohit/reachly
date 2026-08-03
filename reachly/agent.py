@@ -12,9 +12,12 @@ SaaS server (which builds the same inputs from its database).
 """
 from __future__ import annotations
 
+import base64
 import json
 import hashlib
 import logging
+import mimetypes
+import shutil
 import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -25,7 +28,7 @@ from .config import AgentConfig
 from .content import generate_engagement_comment, generate_medium_article, generate_post, pick_theme
 from .context import load_strategy_context
 from .llm import LLMClient
-from .media import HygaarClient, generate_image_gemini
+from .media import HygaarClient, SeedanceClient, generate_image_gemini
 from .models import (
     BusinessProfile,
     GeneratedMedia,
@@ -50,9 +53,20 @@ class AgentSettings:
 
     image_provider: str = "none"          # gemini | hygaar | none
     gemini_image_model: str = "gemini-2.5-flash-image"
-    video_provider: str = "none"          # hygaar | none
+    video_provider: str = "none"          # seedance | hygaar | none
     hygaar_base_url: Optional[str] = None
     hygaar_api_token: Optional[str] = None
+    seedance_api_key: Optional[str] = None
+    seedance_base_url: str = "https://ark.ap-southeast.bytepluses.com/api/v3"
+    seedance_model: str = "seedance_2_5"
+    seedance_fallback_model: str = "seedance_2_0"
+    seedance_ratio: str = "9:16"
+    seedance_target_duration: int = 30
+    seedance_clip_count: int = 2
+    seedance_clip_duration: int = 15
+    seedance_generate_audio: bool = True
+    seedance_watermark: bool = False
+    daily_media_plan: list[str] = field(default_factory=list)
     brand_logo_path: Optional[str] = None
     brand_logo_position: str = "bottom-right"
 
@@ -60,6 +74,7 @@ class AgentSettings:
     dry_run: bool = True
     data_dir: Path = field(default_factory=lambda: Path("./.reachly_data"))
     public_media_base_url: Optional[str] = None
+    public_media_dir: Optional[Path] = None
     context_repo: Optional[str] = None
     agents_md_path: Optional[str] = None
     product_theory_path: Optional[str] = None
@@ -71,6 +86,14 @@ class AgentSettings:
     linkedin_image_rate: Optional[float] = None
     twitter_image_rate: Optional[float] = None
     medium_image_aspect_ratio: str = "16:9"
+    video_generated_reference_count: int = 3
+
+
+@dataclass
+class VideoCreativeContext:
+    strategy: str = "fresh"
+    reference_images: list[dict[str, str]] = field(default_factory=list)
+    source_posts: list[dict] = field(default_factory=list)
 
 
 class Agent:
@@ -103,6 +126,7 @@ class Agent:
             posting_style=settings.posting_style,
         )
         self._last_linkedin_post: Optional[GeneratedPost] = None
+        self._last_video_error: Optional[str] = None
         logger.info("Strategy context source: %s", self._strategy.source)
 
     @classmethod
@@ -124,12 +148,24 @@ class Agent:
             video_provider=cfg.video_provider,
             hygaar_base_url=cfg.hygaar_base_url,
             hygaar_api_token=cfg.hygaar_api_token,
+            seedance_api_key=cfg.seedance_api_key,
+            seedance_base_url=cfg.seedance_base_url,
+            seedance_model=cfg.seedance_model,
+            seedance_fallback_model=cfg.seedance_fallback_model,
+            seedance_ratio=cfg.seedance_ratio,
+            seedance_target_duration=cfg.seedance_target_duration,
+            seedance_clip_count=cfg.seedance_clip_count,
+            seedance_clip_duration=cfg.seedance_clip_duration,
+            seedance_generate_audio=cfg.seedance_generate_audio,
+            seedance_watermark=cfg.seedance_watermark,
+            daily_media_plan=cfg.daily_media_plan,
             brand_logo_path=cfg.brand_logo_path,
             brand_logo_position=cfg.brand_logo_position,
             attach_image=cfg.attach_image,
             dry_run=cfg.dry_run,
             data_dir=cfg.data_dir,
             public_media_base_url=cfg.public_media_base_url,
+            public_media_dir=Path(cfg.public_media_dir) if cfg.public_media_dir else None,
             context_repo=repo,
             agents_md_path=cfg.agents_md_path,
             product_theory_path=cfg.product_theory_path,
@@ -145,7 +181,12 @@ class Agent:
         return cls(cfg.business, cfg.platforms, settings)
 
     # ------------------------------------------------------------------
-    def build_post(self, theme: Optional[str] = None) -> GeneratedPost:
+    def build_post(
+        self,
+        theme: Optional[str] = None,
+        *,
+        attach_image: Optional[bool] = None,
+    ) -> GeneratedPost:
         theme = theme or self._select_theme()
         logger.info("Generating post for theme: %s", theme)
         post = generate_post(
@@ -157,7 +198,8 @@ class Agent:
             newness_context=self.history.newness_summary(limit_per_platform=3),
             strategy=self._strategy,
         )
-        if self.settings.attach_image and post.image_prompt:
+        should_attach_image = self.settings.attach_image if attach_image is None else attach_image
+        if should_attach_image and post.image_prompt:
             try:
                 post.media = self._generate_media(post.image_prompt)
             except Exception as e:  # noqa: BLE001
@@ -196,7 +238,7 @@ class Agent:
     def _generate_media(self, prompt: str, *, aspect_ratio: str = "1:1") -> Optional[GeneratedMedia]:
         media_dir = self.settings.data_dir / "media"
         if self.settings.image_provider == "gemini":
-            return generate_image_gemini(
+            media = generate_image_gemini(
                 prompt,
                 api_key=self.settings.gemini_api_key,
                 model=self.settings.gemini_image_model,
@@ -205,15 +247,277 @@ class Agent:
                 logo_position=self.settings.brand_logo_position,
                 aspect_ratio=aspect_ratio,
             )
+            return self._make_public_media(media)
         if self.settings.image_provider == "hygaar":
             client = HygaarClient(self.settings.hygaar_base_url, self.settings.hygaar_api_token)
-            return client.generate_image(
+            media = client.generate_image(
                 prompt,
                 media_dir,
                 logo_path=self.settings.brand_logo_path,
                 logo_position=self.settings.brand_logo_position,
             )
+            return self._make_public_media(media)
         return None
+
+    def _make_public_media(self, media: Optional[GeneratedMedia]) -> Optional[GeneratedMedia]:
+        if not media:
+            return None
+        if media.public_url:
+            return media
+        if not (self.settings.public_media_base_url and self.settings.public_media_dir):
+            return media
+        source = Path(media.local_path).expanduser()
+        if not source.is_file():
+            return media
+        public_dir = Path(self.settings.public_media_dir)
+        public_dir.mkdir(parents=True, exist_ok=True)
+        target = public_dir / source.name
+        try:
+            if source.resolve() != target.resolve():
+                shutil.copy2(source, target)
+            media.local_path = str(target)
+            media.public_url = f"{self.settings.public_media_base_url.rstrip('/')}/{target.name}"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Could not publish media reference %s (%s).", source, e)
+        return media
+
+    def _reference_from_path(self, path: str, *, role: str = "reference_image") -> Optional[dict[str, str]]:
+        media = self._make_public_media(
+            GeneratedMedia(kind="image", local_path=path, mime_type="image/png")
+        )
+        if media and media.public_url:
+            return {"url": media.public_url, "role": role}
+        source = Path(path).expanduser()
+        if not source.is_file() or source.stat().st_size > 8_000_000:
+            return None
+        mime_type = mimetypes.guess_type(str(source))[0] or "image/png"
+        if not mime_type.startswith("image/"):
+            return None
+        try:
+            encoded = base64.b64encode(source.read_bytes()).decode("ascii")
+        except OSError:
+            return None
+        return {"url": f"data:{mime_type};base64,{encoded}", "role": role}
+
+    def _brand_reference_images(self) -> list[dict[str, str]]:
+        if not self.settings.brand_logo_path:
+            return []
+        logo = Path(self.settings.brand_logo_path).expanduser()
+        if not logo.is_file():
+            return []
+        ref = self._reference_from_path(str(logo), role="brand_logo")
+        return [ref] if ref else []
+
+    def _recent_image_file_references(self, *, limit: int = 3) -> list[dict[str, str]]:
+        media_dir = self.settings.data_dir / "media"
+        if not media_dir.is_dir():
+            return []
+        files = [
+            path
+            for path in media_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+        ]
+        files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        refs = []
+        for path in files[:limit]:
+            ref = self._reference_from_path(str(path), role="previous_social_image")
+            if ref:
+                refs.append(ref)
+        return refs
+
+    def _recent_image_post_references(self, *, limit: int = 3) -> tuple[list[dict[str, str]], list[dict]]:
+        refs: list[dict[str, str]] = []
+        posts: list[dict] = []
+        seen_urls: set[str] = set()
+        seen_hooks: set[str] = set()
+        for row in self.history.recent_image_posts(limit=limit * 3):
+            hook_key = (row.get("hook") or "").strip().lower()
+            if hook_key and hook_key in seen_hooks:
+                continue
+            ref = None
+            if row.get("media_public_url"):
+                ref = {"url": row["media_public_url"], "role": "previous_social_image"}
+            elif row.get("media_local_path"):
+                ref = self._reference_from_path(row["media_local_path"], role="previous_social_image")
+            if not ref or ref["url"] in seen_urls:
+                continue
+            seen_urls.add(ref["url"])
+            if hook_key:
+                seen_hooks.add(hook_key)
+            refs.append(ref)
+            posts.append(row)
+            if len(refs) >= limit:
+                break
+        if len(refs) < limit:
+            for ref in self._recent_image_file_references(limit=limit - len(refs)):
+                if ref["url"] not in seen_urls:
+                    refs.append(ref)
+                    seen_urls.add(ref["url"])
+        return refs, posts
+
+    def _fresh_video_reference_images(self, post: GeneratedPost, *, count: int = 3) -> list[dict[str, str]]:
+        prompts = [
+            (
+                "Create a vertical premium ecommerce reference still for a Hygaar ad: "
+                "a messy SKU/catalog workflow transforms into an organized AI media command center. "
+                "No readable text, no fake dashboards, high-end studio lighting."
+            ),
+            (
+                "Create a vertical reference still showing product catalog scale: many product variants, "
+                "consistent lighting, clean ecommerce composition, premium but operational. No text."
+            ),
+            (
+                "Create a vertical reference still for the closing shot of a genAI catalog content ad: "
+                "polished product media outputs ready for marketplace, PDP, ads, and social. No text."
+            ),
+        ]
+        refs: list[dict[str, str]] = []
+        for index, base_prompt in enumerate(prompts[: max(1, count)], start=1):
+            prompt = (
+                f"{base_prompt}\nBrand: {self.business.name}. "
+                f"Post context: {post.hook} {post.body[:500]}. "
+                f"Reference frame {index}; keep visual continuity with the other frames."
+            )
+            try:
+                media = self._generate_media(prompt, aspect_ratio="9:16")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Fresh video reference image generation failed (%s).", e)
+                continue
+            if media and media.public_url:
+                refs.append({"url": media.public_url, "role": "generated_storyboard_image"})
+        return refs
+
+    def _build_video_creative_context(
+        self,
+        post: GeneratedPost,
+        *,
+        strategy: str = "auto",
+    ) -> VideoCreativeContext:
+        base_refs = self._brand_reference_images()
+        if strategy in ("auto", "recap"):
+            recent_refs, source_posts = self._recent_image_post_references(limit=3)
+            if strategy == "recap" or recent_refs:
+                refs = base_refs + recent_refs
+                if len(recent_refs) < 2:
+                    refs += self._fresh_video_reference_images(
+                        post,
+                        count=max(1, 2 - len(recent_refs)),
+                    )
+                return VideoCreativeContext(
+                    strategy="recap",
+                    reference_images=refs,
+                    source_posts=source_posts,
+                )
+
+        fresh_refs = self._fresh_video_reference_images(
+            post,
+            count=self.settings.video_generated_reference_count,
+        )
+        return VideoCreativeContext(
+            strategy="fresh",
+            reference_images=base_refs + fresh_refs,
+            source_posts=[],
+        )
+
+    def _generate_video(
+        self,
+        prompt: str,
+        *,
+        reference_images: Optional[list[dict[str, str]]] = None,
+    ) -> Optional[GeneratedMedia]:
+        media_dir = self.settings.data_dir / "media"
+        if self.settings.video_provider == "seedance":
+            client = SeedanceClient(
+                self.settings.seedance_api_key,
+                base_url=self.settings.seedance_base_url,
+                model_key=self.settings.seedance_model,
+                fallback_model_key=self.settings.seedance_fallback_model,
+            )
+            media = client.generate_video(
+                prompt,
+                media_dir,
+                ratio=self.settings.seedance_ratio,
+                target_duration=self.settings.seedance_target_duration,
+                clip_count=self.settings.seedance_clip_count,
+                clip_duration=self.settings.seedance_clip_duration,
+                generate_audio=self.settings.seedance_generate_audio,
+                watermark=self.settings.seedance_watermark,
+                reference_images=reference_images,
+            )
+            return self._make_public_media(media)
+        if self.settings.video_provider == "hygaar":
+            client = HygaarClient(self.settings.hygaar_base_url, self.settings.hygaar_api_token)
+            media = client.generate_video(prompt, media_dir)
+            return self._make_public_media(media)
+        return None
+
+    def _video_prompt_for_post(
+        self,
+        post: GeneratedPost,
+        creative: VideoCreativeContext,
+    ) -> str:
+        hashtags = " ".join(post.hashtags[:4])
+        source_prompt = post.image_prompt or post.hook
+        source_posts = "\n".join(
+            f"- {row.get('theme')}: {row.get('hook')} {str(row.get('body') or '')[:260]}"
+            for row in creative.source_posts[:3]
+        )
+        if creative.strategy == "recap":
+            strategy_direction = (
+                "Use the reference images and recent post themes as a coherent daily recap ad. "
+                "Turn the last image-post ideas into one narrative: catalog chaos, AI production "
+                "system, consistent SKU-ready output, and business impact."
+            )
+        else:
+            strategy_direction = (
+                "Create a fresh conversion-oriented ad concept that positions Hygaar as the "
+                "catalog content at scale genAI layer for ecommerce teams."
+            )
+        return (
+            f"Create a premium {self.settings.seedance_target_duration}-second vertical social video "
+            f"for {self.business.name}.\n"
+            f"Business: {self.business.sector or 'AI-powered product media'}.\n"
+            f"Product context: {self.business.product_info or self.business.vision or post.body[:400]}.\n"
+            f"Post hook: {post.hook}\n"
+            f"Post body context: {post.body[:900]}\n"
+            f"Visual direction: {source_prompt}\n"
+            f"Creative strategy: {creative.strategy}. {strategy_direction}\n"
+            f"Recent image-post source material:\n{source_posts or 'No prior image-post text available.'}\n"
+            "Voiceover/script direction: speak to ecommerce operators who need catalogue images, "
+            "variant visuals, PDP content, marketplace assets, and ad creatives at scale. Make the "
+            "message concrete: fewer manual shoots, consistent brand quality, faster SKU launches, "
+            "and AI agents that handle production workflows.\n"
+            f"Hashtag context: {hashtags}\n\n"
+            "Requirements: cinematic ecommerce/product-media quality, strong opening motion in the "
+            "first two seconds, multi-angle and multi-scene storytelling inside one coherent ad, "
+            "realistic lighting, no fake UI, no fake logos, no readable on-screen text, no watermark, "
+            "no distorted products, clean ending frame suitable for Instagram Reels and LinkedIn feed."
+        )
+
+    def _ensure_video(self, post: GeneratedPost, *, strategy: str = "auto") -> GeneratedPost:
+        if post.media and post.media.kind == "video" and post.media.local_path:
+            return post
+        self._last_video_error = None
+        creative = self._build_video_creative_context(post, strategy=strategy)
+        prompt = self._video_prompt_for_post(post, creative)
+        try:
+            post.media = self._generate_video(prompt, reference_images=creative.reference_images)
+        except Exception as e:  # noqa: BLE001
+            self._last_video_error = str(e)
+            logger.warning("Video generation failed (%s).", e)
+        return post
+
+    def _has_video(self, post: GeneratedPost) -> bool:
+        return bool(post.media and post.media.kind == "video" and post.media.local_path)
+
+    def _video_required_results(self, platforms: list[Platform]) -> dict[Platform, PostResult]:
+        error = "Video generation did not produce a video; no post was published."
+        if self._last_video_error:
+            error = f"{error} Provider error: {self._last_video_error[:500]}"
+        return {
+            platform: PostResult(platform=platform, ok=False, error=error)
+            for platform in platforms
+        }
 
     # ------------------------------------------------------------------
     def _pending_path(self) -> Path:
@@ -287,10 +591,53 @@ class Agent:
             logger.warning("Image generation failed (%s).", e)
         return post
 
-    def run_linkedin_slot(self, theme: Optional[str] = None) -> dict[Platform, PostResult]:
+    def _media_kind_for_slot(
+        self,
+        *,
+        slot_index: Optional[int] = None,
+        media_kind: Optional[str] = None,
+    ) -> str:
+        if media_kind and media_kind != "auto":
+            return media_kind if media_kind in ("image", "video") else "image"
+        plan = [item for item in self.settings.daily_media_plan if item in ("image", "video")]
+        if plan and slot_index is not None:
+            return plan[slot_index % len(plan)]
+        return "image"
+
+    def _video_strategy_for_slot(
+        self,
+        *,
+        slot_index: Optional[int] = None,
+        strategy: Optional[str] = None,
+    ) -> str:
+        if strategy and strategy != "auto":
+            return strategy if strategy in ("recap", "fresh") else "fresh"
+        plan = [item for item in self.settings.daily_media_plan if item in ("image", "video")]
+        if plan and slot_index is not None:
+            video_number = sum(1 for item in plan[: (slot_index % len(plan)) + 1] if item == "video")
+            return "recap" if video_number == 1 else "fresh"
+        return "auto"
+
+    def run_linkedin_slot(
+        self,
+        theme: Optional[str] = None,
+        *,
+        slot_index: Optional[int] = None,
+        media_kind: Optional[str] = None,
+        video_strategy: Optional[str] = None,
+    ) -> dict[Platform, PostResult]:
         """Generate content, queue for Instagram, post primary text platforms."""
         with self._run_lock:
-            post = self.build_post(theme)
+            kind = self._media_kind_for_slot(slot_index=slot_index, media_kind=media_kind)
+            post = self.build_post(theme, attach_image=(kind == "image" and self.settings.attach_image))
+            if kind == "video":
+                strategy = self._video_strategy_for_slot(
+                    slot_index=slot_index,
+                    strategy=video_strategy,
+                )
+                post = self._ensure_video(post, strategy=strategy)
+                if not self._has_video(post):
+                    return self._video_required_results([Platform.linkedin, Platform.twitter])
             self._save_pending(post)
             results = self._publish(post, platforms=[Platform.linkedin, Platform.twitter])
             if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
@@ -304,13 +651,14 @@ class Agent:
             if not post:
                 logger.info("No pending post; generating fresh content for Instagram.")
                 post = self.build_post()
-            post = self._ensure_image(post)
+            if not (post.media and post.media.kind == "video"):
+                post = self._ensure_image(post)
             if not post.media:
                 return {
                     Platform.instagram: PostResult(
                         platform=Platform.instagram,
                         ok=False,
-                        error="Instagram requires an image; generation failed.",
+                        error="Instagram requires generated image or video media.",
                     )
                 }
             return self._publish(post, platforms=[Platform.instagram])
@@ -334,14 +682,46 @@ class Agent:
         theme: Optional[str] = None,
         *,
         platforms: Optional[list[Platform]] = None,
+        media_kind: Optional[str] = None,
+        video_strategy: Optional[str] = None,
     ) -> dict[Platform, PostResult]:
         with self._run_lock:
-            post = self.build_post(theme)
-            if platforms is None or Platform.instagram in platforms:
+            kind = self._media_kind_for_slot(media_kind=media_kind)
+            post = self.build_post(theme, attach_image=(kind == "image" and self.settings.attach_image))
+            if kind == "video":
+                post = self._ensure_video(
+                    post,
+                    strategy=self._video_strategy_for_slot(strategy=video_strategy),
+                )
+                if not self._has_video(post):
+                    target_platforms = platforms or [p for p, c in self.platforms.items() if c.enabled]
+                    return self._video_required_results(target_platforms)
+            if kind != "video" and (platforms is None or Platform.instagram in platforms):
                 post = self._ensure_image(post)
             if platforms is None or Platform.linkedin in platforms:
                 self._save_pending(post)
             results = self._publish(post, platforms=platforms)
+            if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
+                self._last_linkedin_post = post
+            return results
+
+    def run_video_test(
+        self,
+        theme: Optional[str] = None,
+        *,
+        video_strategy: Optional[str] = None,
+    ) -> dict[Platform, PostResult]:
+        """Generate one video and publish only to LinkedIn + Instagram."""
+        with self._run_lock:
+            post = self.build_post(theme, attach_image=False)
+            post = self._ensure_video(
+                post,
+                strategy=self._video_strategy_for_slot(strategy=video_strategy),
+            )
+            if not self._has_video(post):
+                return self._video_required_results([Platform.linkedin, Platform.instagram])
+            self._save_pending(post)
+            results = self._publish(post, platforms=[Platform.linkedin, Platform.instagram])
             if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
                 self._last_linkedin_post = post
             return results
@@ -385,6 +765,7 @@ class Agent:
             publish_post = self._post_for_platform(post, platform)
             result = poster.post(publish_post)
             results[platform] = result
+            media = publish_post.media
             self.history.record(
                 theme=post.theme,
                 hook=post.hook,
@@ -393,6 +774,10 @@ class Agent:
                 ok=result.ok,
                 permalink=result.permalink,
                 error=result.error,
+                media_kind=media.kind if media else None,
+                media_local_path=media.local_path if media else None,
+                media_public_url=media.public_url if media else None,
+                media_prompt=media.prompt if media else None,
             )
             if result.ok:
                 logger.info("✓ %s posted: %s", platform.value, result.permalink or "(ok)")
@@ -404,6 +789,8 @@ class Agent:
     def _post_for_platform(self, post: GeneratedPost, platform: Platform) -> GeneratedPost:
         if platform in (Platform.instagram, Platform.medium) or not post.media:
             return post
+        if post.media.kind == "video":
+            return post if platform == Platform.linkedin else post.model_copy(update={"media": None})
         if self._use_media_on_text_platform(post, platform):
             return post
         return post.model_copy(update={"media": None})

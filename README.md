@@ -84,6 +84,8 @@ When happy, set `DRY_RUN="no"` in `.env` and run it forever:
 ```bash
 python -m reachly.runner run                  # scheduler: LinkedIn + Instagram + Medium slots
 python -m reachly.runner once                 # all enabled platforms, one shot
+python -m reachly.runner seedance-account-check  # minimal ModelArk activation/billing probe
+python -m reachly.runner linkedin --media-kind video --video-strategy recap  # LinkedIn-first Seedance video test
 python -m reachly.runner instagram            # test Instagram slot (image + post)
 python -m reachly.runner medium               # test Medium article slot (16:9 image + article)
 ```
@@ -100,27 +102,38 @@ every field with inline docs.
 Set multiple LinkedIn times and an Instagram offset (minutes):
 
 ```env
-POST_TIMES="09:00,13:30,21:00"
+POST_TIMES="09:00,12:00,15:00,18:00,21:00"
 INSTAGRAM_OFFSET_MINUTES="5"
 INSTAGRAM_MODE="browser"
 ATTACH_IMAGE="yes"
 IMAGE_PROVIDER="gemini"
+VIDEO_PROVIDER="seedance"
+SEEDANCE_API_KEY="..."  # or ARK_API_KEY / MODELARK_API_KEY from the Agent 8 env
+SEEDANCE_CLIP_COUNT="0" # auto: 2.5 uses native 30s, 2.0 fallback splits into 15s clips
+REACHLY_DAILY_MEDIA_PLAN="image,image,image,video,video"
 ```
 
 With the defaults above (Asia/Kolkata):
 
-| Slot | LinkedIn | Instagram |
-|------|----------|-----------|
-| Morning | 09:00 | 09:05 |
-| Afternoon | 13:30 | 13:35 |
-| Evening | 21:00 | 21:05 |
+| Slot | LinkedIn | Instagram | Media |
+|------|----------|-----------|-------|
+| Morning | 09:00 | 09:05 | Image |
+| Noon | 12:00 | 12:05 | Image |
+| Afternoon | 15:00 | 15:05 | Image |
+| Evening | 18:00 | 18:05 | Video from recent image posts |
+| Night | 21:00 | 21:05 | Fresh video ad |
 
 **Per slot:**
 
-1. **LinkedIn** — LLM generates hook, body, hashtags, and `image_prompt` → posts text to LinkedIn → saves content to `pending_instagram_post.json`.
-2. **Instagram (+N min)** — loads pending content → **Gemini generates an image from the text prompt** → posts image + caption via browser or Graph API.
+1. **LinkedIn image slots** — LLM generates hook, body, hashtags, and media prompt → posts text + image to LinkedIn → records the image for future video references.
+2. **LinkedIn video slots** — first daily video uses the last image-post references and prior copy; second daily video generates fresh storyboard images and script direction. Seedance 2.5 gets one native 30s multi-scene prompt; 2.0 fallback is split into 15s clips.
+3. **Instagram (+N min)** — loads pending content → reuses the LinkedIn video or generates an image from the text prompt → posts media + caption via browser or Graph API.
 
-Instagram requires an image (`ATTACH_IMAGE=yes`). If no pending post exists (e.g. LinkedIn slot failed), Instagram generates fresh content instead.
+Instagram requires generated media. If no pending post exists (e.g. LinkedIn slot failed), Instagram generates fresh content instead.
+
+Before the first live video run, use `seedance-account-check`. It creates minimal
+4-second ModelArk probe tasks and reports provider-side blockers such as
+`ModelNotOpen` for Seedance 2.5 activation or `AccountOverdueError` for billing.
 
 ---
 
@@ -170,15 +183,16 @@ Docker: `cd deploy && docker compose up --build`.
 |---|---|---|
 | **X / Twitter** | OAuth2 user token (`tweet.write`, `media.write`). Note: X has no free tier in 2026 (pay-per-use ~$0.01/post). | username + password; optional login email/phone for X checkpoints |
 | **LinkedIn** | `w_member_social` access token for personal posts; `w_organization_social` + organization id for company pages. Partner verification required. | email + password; optional company page name or admin URL |
-| **Instagram** | Business account, Graph API token + IG user id, and a **public** image URL (the hosted server provides one). | username + password; **image required** (generated from LLM prompt) |
+| **Instagram** | Business account, Graph API token + IG user id, and a **public** image/video URL (the hosted server provides one). | username + password; generated image posts or video/Reels uploads |
 | **Medium** | Public API not reliable for new integrations — **browser mode only**. | email + password; **16:9 image required**; `MEDIUM_PUBLISH_STATUS` = `draft` or `public`; optional `MEDIUM_EXPECTED_ACCOUNT` guard |
 
 Because API approval can take weeks (and X now charges), **browser mode** lets users
 start posting immediately; they can upgrade to API mode later.
 
 **Instagram browser tips:** Prime the session once (login + phone approval if prompted).
-The create flow uses `/create/select/` with fallback selectors. Test with
-`python -m reachly.runner instagram` before enabling the live schedule.
+Video posts prefer `/reels/create/` and fall back through the standard create
+flow. Test with `python -m reachly.runner instagram` before enabling the live
+schedule.
 
 ---
 

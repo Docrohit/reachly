@@ -44,6 +44,9 @@ def build_agent_for_user(user: User) -> Agent | None:
         ).all()
 
     providers = decrypt_dict(profile_row.providers_vault) if profile_row.providers_vault else {}
+    media_plan = _media_plan(providers.get("daily_media_plan"))
+    if not media_plan and profile_row.video_provider != "none":
+        media_plan = ["image", "image", "image", "video", "video"]
 
     business = BusinessProfile(
         name=profile_row.name,
@@ -74,12 +77,27 @@ def build_agent_for_user(user: User) -> Agent | None:
         video_provider=profile_row.video_provider,
         hygaar_base_url=providers.get("hygaar_base_url"),
         hygaar_api_token=providers.get("hygaar_api_token"),
+        seedance_api_key=providers.get("seedance_api_key"),
+        seedance_base_url=providers.get(
+            "seedance_base_url",
+            "https://ark.ap-southeast.bytepluses.com/api/v3",
+        ),
+        seedance_model=providers.get("seedance_model", "seedance_2_5"),
+        seedance_fallback_model=providers.get("seedance_fallback_model", "seedance_2_0"),
+        seedance_ratio=providers.get("seedance_ratio", "9:16"),
+        seedance_target_duration=_as_int(providers.get("seedance_target_duration"), 30),
+        seedance_clip_count=_as_int(providers.get("seedance_clip_count"), 0),
+        seedance_clip_duration=_as_int(providers.get("seedance_clip_duration"), 15),
+        seedance_generate_audio=_as_bool(providers.get("seedance_generate_audio"), True),
+        seedance_watermark=_as_bool(providers.get("seedance_watermark"), False),
+        daily_media_plan=media_plan,
         brand_logo_path=providers.get("brand_logo_path"),
         brand_logo_position=providers.get("brand_logo_position", "bottom-right"),
         attach_image=user.attach_image,
         dry_run=user.dry_run,
         data_dir=data_dir,
         public_media_base_url=settings.public_media_url,
+        public_media_dir=Path(settings.media_dir),
         context_repo=profile_row.context_repo,
         posting_style=profile_row.posting_style,
         enable_engagement=user.enable_engagement,
@@ -182,8 +200,8 @@ def run_user_now(user_id: int, theme: str | None = None) -> dict:
     return {p.value: {"ok": r.ok, "permalink": r.permalink, "error": r.error} for p, r in results.items()}
 
 
-def run_user_linkedin_slot(user_id: int) -> dict:
-    return _run_user_slot(user_id, "linkedin")
+def run_user_linkedin_slot(user_id: int, *, slot_index: int | None = None) -> dict:
+    return _run_user_slot(user_id, "linkedin", slot_index=slot_index)
 
 
 def run_user_instagram_slot(user_id: int) -> dict:
@@ -194,7 +212,7 @@ def run_user_medium_slot(user_id: int) -> dict:
     return _run_user_slot(user_id, "medium")
 
 
-def _run_user_slot(user_id: int, slot: str) -> dict:
+def _run_user_slot(user_id: int, slot: str, *, slot_index: int | None = None) -> dict:
     with get_session() as session:
         user = session.get(User, user_id)
     if not user or not user.is_active:
@@ -204,7 +222,7 @@ def _run_user_slot(user_id: int, slot: str) -> dict:
         return {"error": "no business profile configured"}
     try:
         if slot == "linkedin":
-            results = agent.run_linkedin_slot()
+            results = agent.run_linkedin_slot(slot_index=slot_index)
             if user.enable_engagement and results.get(Platform.linkedin) and results[Platform.linkedin].ok:
                 delay = max(1, user.engagement_delay_minutes) * 60
                 threading.Timer(delay, _run_user_engagement, args=(user_id,)).start()
@@ -269,7 +287,10 @@ def tick() -> None:
             logger.info("Reachly %s slot reached for user %s.", action, user.id)
             try:
                 if action == "linkedin":
-                    run_user_linkedin_slot(user.id)
+                    run_user_linkedin_slot(
+                        user.id,
+                        slot_index=_slot_index_for_time(user.post_times or user.post_time, now_hm),
+                    )
                 elif action == "instagram":
                     run_user_instagram_slot(user.id)
                 elif action == "medium":
@@ -310,6 +331,32 @@ def _parse_times(value: str) -> list[str]:
         if 0 <= hour <= 23 and 0 <= minute <= 59:
             out.append(f"{hour:02d}:{minute:02d}")
     return out
+
+
+def _slot_index_for_time(value: str, now_hm: str) -> int | None:
+    times = _parse_times(value or "")
+    try:
+        return times.index(now_hm)
+    except ValueError:
+        return None
+
+
+def _media_plan(value: str | None) -> list[str]:
+    allowed = {"image", "video"}
+    return [item for item in (raw.strip().lower() for raw in (value or "").split(",")) if item in allowed]
+
+
+def _as_int(value, default: int) -> int:
+    try:
+        return int(value) if value not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_bool(value, default: bool) -> bool:
+    if value in (None, ""):
+        return default
+    return str(value).lower() in ("1", "yes", "true")
 
 
 def start_scheduler():

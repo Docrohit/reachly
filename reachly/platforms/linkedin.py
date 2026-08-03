@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
@@ -83,6 +84,9 @@ class LinkedInApiPoster(Poster):
             if post.media and post.media.kind == "image":
                 image_urn = self._upload_image(author, post.media.local_path)
                 content = {"media": {"id": image_urn}}
+            elif post.media and post.media.kind == "video":
+                video_urn = self._upload_video(author, post.media.local_path)
+                content = {"media": {"id": video_urn}}
 
             body = {
                 "author": author,
@@ -131,6 +135,85 @@ class LinkedInApiPoster(Poster):
             up.raise_for_status()
         return image_urn
 
+    def _upload_video(self, author: str, path: str) -> str:
+        file_size = Path(path).stat().st_size
+        init = requests.post(
+            f"{REST}/videos?action=initializeUpload",
+            json={
+                "initializeUploadRequest": {
+                    "owner": author,
+                    "fileSizeBytes": file_size,
+                    "uploadCaptions": False,
+                    "uploadThumbnail": False,
+                }
+            },
+            headers=self._headers(),
+            timeout=30,
+        )
+        init.raise_for_status()
+        value = init.json()["value"]
+        video_urn = value["video"]
+        upload_token = value.get("uploadToken")
+        uploaded_part_ids = []
+
+        with open(path, "rb") as f:
+            for instruction in value.get("uploadInstructions", []):
+                first = int(instruction["firstByte"])
+                last = int(instruction["lastByte"])
+                upload_url = instruction["uploadUrl"]
+                f.seek(first)
+                data = f.read(last - first + 1)
+                up = requests.put(
+                    upload_url,
+                    data=data,
+                    headers={
+                        "Authorization": f"Bearer {self.token}",
+                        "Content-Type": "application/octet-stream",
+                    },
+                    timeout=300,
+                )
+                up.raise_for_status()
+                etag = up.headers.get("ETag") or up.headers.get("etag")
+                if not etag:
+                    raise RuntimeError("LinkedIn video upload did not return an ETag.")
+                uploaded_part_ids.append(etag.strip('"'))
+
+        finalize_payload = {
+            "finalizeUploadRequest": {
+                "video": video_urn,
+                "uploadedPartIds": uploaded_part_ids,
+            }
+        }
+        if upload_token:
+            finalize_payload["finalizeUploadRequest"]["uploadToken"] = upload_token
+        finalize = requests.post(
+            f"{REST}/videos?action=finalizeUpload",
+            json=finalize_payload,
+            headers=self._headers(),
+            timeout=30,
+        )
+        finalize.raise_for_status()
+        self._await_video_available(video_urn)
+        return video_urn
+
+    def _await_video_available(self, video_urn: str, max_wait: int = 300) -> None:
+        deadline = time.time() + max_wait
+        encoded = quote(video_urn, safe="")
+        while time.time() < deadline:
+            r = requests.get(
+                f"{REST}/videos/{encoded}",
+                headers=self._headers(),
+                timeout=30,
+            )
+            r.raise_for_status()
+            status = str(r.json().get("status", "")).upper()
+            if status in ("AVAILABLE", "PROCESSING_SUCCEEDED"):
+                return
+            if status in ("PROCESSING_FAILED", "FAILED"):
+                raise RuntimeError(f"LinkedIn video processing failed: {r.text[:300]}")
+            time.sleep(5)
+        raise TimeoutError(f"LinkedIn video was not available after {max_wait}s.")
+
 
 class LinkedInBrowserPoster(Poster):
     platform = Platform.linkedin
@@ -178,13 +261,13 @@ class LinkedInBrowserPoster(Poster):
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "editor_not_found")
                     return self._fail(f"LinkedIn composer editor not found. Debug: {shot}")
 
-                if post.media and post.media.kind == "image":
-                    if not self._attach_image(page, post.media.local_path):
+                if post.media and post.media.kind in ("image", "video"):
+                    if not self._attach_media(page, post.media.local_path, post.media.kind):
                         shot = save_debug_artifact(
-                            page, self.data_dir, "linkedin", "image_attach_failed"
+                            page, self.data_dir, "linkedin", "media_attach_failed"
                         )
                         logger.warning(
-                            "LinkedIn image attach failed; posting text only. Debug: %s",
+                            "LinkedIn media attach failed; posting text only. Debug: %s",
                             shot,
                         )
 
@@ -210,17 +293,24 @@ class LinkedInBrowserPoster(Poster):
             return self._fail(f"LinkedIn browser error: {e}")
 
     def _attach_image(self, page, image_path: str) -> bool:
-        """Attach an image in LinkedIn's feed or company-page composer."""
+        return self._attach_media(page, image_path, "image")
+
+    def _attach_media(self, page, media_path: str, media_kind: str) -> bool:
+        """Attach image or video media in LinkedIn's feed or company-page composer."""
         root = self._composer_root(page)
         candidates = [
             lambda: root.get_by_role("button", name=re.compile(r"add media", re.I)).first,
             lambda: root.locator("button[aria-label*='Add media' i]").first,
+            lambda: root.get_by_role("button", name=re.compile(r"add (a )?video", re.I)).first,
             lambda: root.get_by_role("button", name=re.compile(r"add (a )?photo", re.I)).first,
-            lambda: root.get_by_role("button", name=re.compile(r"photo|image|media", re.I)).first,
+            lambda: root.get_by_role("button", name=re.compile(r"photo|image|video|media", re.I)).first,
             lambda: root.locator("button[aria-label*='Add a photo' i]").first,
+            lambda: root.locator("button[aria-label*='Add a video' i]").first,
             lambda: root.locator("button[aria-label*='media' i]").first,
             lambda: root.locator("button:has-text('Add a photo')").first,
+            lambda: root.locator("button:has-text('Add a video')").first,
             lambda: root.locator("button:has-text('Photo')").first,
+            lambda: root.locator("button:has-text('Video')").first,
             lambda: root.locator("button:has-text('Media')").first,
         ]
         for build in candidates:
@@ -233,13 +323,15 @@ class LinkedInBrowserPoster(Poster):
             except Exception:  # noqa: BLE001
                 continue
 
-        photo_options = [
-            lambda: root.get_by_role("button", name=re.compile(r"photo", re.I)).first,
-            lambda: root.locator("button[aria-label*='photo' i]").first,
-            lambda: root.locator("button:has-text('Photo')").first,
-            lambda: page.get_by_role("button", name=re.compile(r"^photo$", re.I)).last,
+        option_label = "video" if media_kind == "video" else "photo"
+        media_options = [
+            lambda: root.get_by_role("button", name=re.compile(option_label, re.I)).first,
+            lambda: root.locator(f"button[aria-label*='{option_label}' i]").first,
+            lambda: root.locator(f"button:has-text('{option_label.title()}')").first,
+            lambda: page.get_by_role("button", name=re.compile(f"^{option_label}$", re.I)).last,
+            lambda: page.get_by_role("button", name=re.compile(r"media", re.I)).last,
         ]
-        for build in photo_options:
+        for build in media_options:
             try:
                 option = build()
                 if option.count() and option.is_visible():
@@ -253,8 +345,8 @@ class LinkedInBrowserPoster(Poster):
             file_input = root.locator("input[type='file']").first
             if not file_input.count():
                 file_input = page.locator("input[type='file']").last
-            file_input.set_input_files(image_path, timeout=10000)
-            page.wait_for_timeout(5000)
+            file_input.set_input_files(media_path, timeout=10000)
+            self._wait_for_media_upload(page, root, media_kind)
         except Exception as e:  # noqa: BLE001
             logger.warning("LinkedIn file input upload failed: %s", e)
             return False
@@ -274,6 +366,24 @@ class LinkedInBrowserPoster(Poster):
             except Exception:  # noqa: BLE001
                 continue
         return True
+
+    def _wait_for_media_upload(self, page, root, media_kind: str) -> None:
+        """Give LinkedIn enough time to accept larger video files before posting."""
+        max_wait = 90 if media_kind == "video" else 15
+        deadline = time.time() + max_wait
+        progress = re.compile(r"uploading|processing|preparing|encoding|compressing|\b\d{1,3}%\b", re.I)
+        page.wait_for_timeout(5000 if media_kind == "video" else 2500)
+        while time.time() < deadline:
+            try:
+                text = root.inner_text(timeout=1500)
+            except Exception:  # noqa: BLE001
+                try:
+                    text = page.locator("body").inner_text(timeout=1500)
+                except Exception:  # noqa: BLE001
+                    text = ""
+            if not progress.search(text or ""):
+                return
+            page.wait_for_timeout(3000)
 
     def _composer_root(self, page):
         """Return the active share composer scope to avoid clicking feed controls."""

@@ -35,7 +35,7 @@ class User(SQLModel, table=True):
 
     # posting schedule
     post_time: str = "09:30"
-    post_times: str = "09:00,13:30,21:00"
+    post_times: str = "09:00,12:00,15:00,18:00,21:00"
     instagram_offset_minutes: int = 5
     medium_times: str = "09:30,14:30,19:30"
     timezone: str = "UTC"
@@ -126,7 +126,7 @@ def _migrate_sqlite() -> None:
             "email": "VARCHAR",
             "username": "VARCHAR",
             "roles": "VARCHAR NOT NULL DEFAULT ''",
-            "post_times": "VARCHAR NOT NULL DEFAULT '09:00,13:30,21:00'",
+            "post_times": "VARCHAR NOT NULL DEFAULT '09:00,12:00,15:00,18:00,21:00'",
             "instagram_offset_minutes": "INTEGER NOT NULL DEFAULT 5",
             "medium_times": "VARCHAR NOT NULL DEFAULT '09:30,14:30,19:30'",
             "enable_engagement": "BOOLEAN NOT NULL DEFAULT 0",

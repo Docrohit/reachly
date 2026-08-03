@@ -41,6 +41,10 @@ class History:
                 "shares": "INTEGER",
                 "analytics_checked_at": "TEXT",
                 "analytics_note": "TEXT",
+                "media_kind": "TEXT",
+                "media_local_path": "TEXT",
+                "media_public_url": "TEXT",
+                "media_prompt": "TEXT",
             },
         )
         self._conn.commit()
@@ -88,7 +92,8 @@ class History:
     def recent_platform_posts(self, platform: str | None = None, limit: int = 3) -> list[dict]:
         query = (
             "SELECT id, created_at, theme, hook, body, platform, ok, permalink, error, "
-            "impressions, likes, comments, shares, analytics_note "
+            "impressions, likes, comments, shares, analytics_note, "
+            "media_kind, media_local_path, media_public_url, media_prompt "
             "FROM posts WHERE hook != ''"
         )
         params: list[object] = []
@@ -101,13 +106,38 @@ class History:
             cur = self._conn.execute(query, params)
             return [_row_to_dict(row) for row in cur.fetchall()]
 
+    def recent_image_posts(self, platform: str | None = None, limit: int = 3) -> list[dict]:
+        query = (
+            "SELECT id, created_at, theme, hook, body, platform, ok, permalink, error, "
+            "impressions, likes, comments, shares, analytics_note, "
+            "media_kind, media_local_path, media_public_url, media_prompt "
+            "FROM posts "
+            "WHERE ok = 1 AND media_kind = 'image' "
+            "AND (COALESCE(media_public_url, '') != '' OR COALESCE(media_local_path, '') != '')"
+        )
+        params: list[object] = []
+        if platform:
+            query += " AND platform = ?"
+            params.append(platform)
+        query += (
+            " ORDER BY "
+            "(COALESCE(shares, 0) * 8 + COALESCE(comments, 0) * 6 + "
+            "COALESCE(likes, 0) * 3 + COALESCE(impressions, 0) / 100) DESC, "
+            "id DESC LIMIT ?"
+        )
+        params.append(limit)
+        with self._lock:
+            cur = self._conn.execute(query, params)
+            return [_row_to_dict(row) for row in cur.fetchall()]
+
     def analytics_summary(self, *, days: int = 14, limit: int = 12) -> str:
         cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
         with self._lock:
             cur = self._conn.execute(
                 """
                 SELECT id, created_at, theme, hook, body, platform, ok, permalink, error,
-                       impressions, likes, comments, shares, analytics_note
+                       impressions, likes, comments, shares, analytics_note,
+                       media_kind, media_local_path, media_public_url, media_prompt
                 FROM posts
                 WHERE created_at >= ? AND ok = 1
                 ORDER BY id DESC
@@ -160,12 +190,17 @@ class History:
         comments: int | None = None,
         shares: int | None = None,
         analytics_note: str | None = None,
+        media_kind: str | None = None,
+        media_local_path: str | None = None,
+        media_public_url: str | None = None,
+        media_prompt: str | None = None,
     ) -> None:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO posts (created_at, theme, hook, body, platform, ok, permalink, error, "
-                "impressions, likes, comments, shares, analytics_note) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "impressions, likes, comments, shares, analytics_note, "
+                "media_kind, media_local_path, media_public_url, media_prompt) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     datetime.utcnow().isoformat(),
                     theme,
@@ -180,6 +215,10 @@ class History:
                     comments,
                     shares,
                     analytics_note,
+                    media_kind,
+                    media_local_path,
+                    media_public_url,
+                    media_prompt,
                 ),
             )
             self._conn.commit()
@@ -249,6 +288,10 @@ def _row_to_dict(row: tuple) -> dict:
         "comments",
         "shares",
         "analytics_note",
+        "media_kind",
+        "media_local_path",
+        "media_public_url",
+        "media_prompt",
     ]
     return dict(zip(keys, row))
 

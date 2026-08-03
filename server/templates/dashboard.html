@@ -16,7 +16,7 @@
   <h2>Posting schedule</h2>
   <form method="post" action="/dashboard/settings">
     <div class="row">
-      <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,13:30,21:00"/></div>
+      <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,12:00,15:00,18:00,21:00"/></div>
       <div><label>Instagram offset minutes</label><input name="instagram_offset_minutes" type="number" min="0" max="240" value="{{ user.instagram_offset_minutes }}"/></div>
       <div><label>Medium article slots</label><input name="medium_times" value="{{ user.medium_times }}" placeholder="09:30,14:30,19:30"/></div>
       <div><label>Timezone (IANA)</label><input name="timezone" value="{{ user.timezone }}"/></div>
@@ -106,6 +106,7 @@
         <select name="video_provider">
           {% set vp = profile.video_provider if profile else 'none' %}
           <option value="none" {{ 'selected' if vp=='none' }}>None</option>
+          <option value="seedance" {{ 'selected' if vp=='seedance' }}>Seedance 2.5</option>
           <option value="hygaar" {{ 'selected' if vp=='hygaar' }}>Hygaar</option>
         </select></div>
     </div>
@@ -117,6 +118,44 @@
     <div class="row">
       <div><label>Hygaar base URL</label><input name="hygaar_base_url" placeholder="https://dev-genai.hygaar.com"/></div>
       <div><label>Hygaar API key (X-API-Key)</label><input name="hygaar_api_token" type="password" placeholder="hygaar_••••"/></div>
+    </div>
+    <div class="row">
+      <div><label>Seedance API key</label><input name="seedance_api_key" type="password" placeholder="•••• (saved)"/></div>
+      <div><label>Seedance base URL</label><input name="seedance_base_url" placeholder="https://ark.ap-southeast.bytepluses.com/api/v3"/></div>
+      <div><label>Seedance model</label>
+        <select name="seedance_model">
+          <option value="">Default (Seedance 2.5)</option>
+          <option value="seedance_2_5">Seedance 2.5</option>
+          <option value="seedance_2_0">Seedance 2.0</option>
+          <option value="seedance_2_0_fast">Seedance 2.0 fast</option>
+        </select></div>
+      <div><label>Fallback model</label>
+        <select name="seedance_fallback_model">
+          <option value="">Default (Seedance 2.0)</option>
+          <option value="seedance_2_0">Seedance 2.0</option>
+          <option value="seedance_2_0_fast">Seedance 2.0 fast</option>
+        </select></div>
+    </div>
+    <div class="row">
+      <div><label>Daily media plan</label><input name="daily_media_plan" placeholder="image,image,image,video,video"/></div>
+      <div><label>Video ratio</label><input name="seedance_ratio" placeholder="9:16"/></div>
+      <div><label>Target seconds</label><input name="seedance_target_duration" placeholder="30"/></div>
+      <div><label>Clip count</label><input name="seedance_clip_count" placeholder="2"/></div>
+      <div><label>Clip seconds</label><input name="seedance_clip_duration" placeholder="15"/></div>
+    </div>
+    <div class="row">
+      <div><label>Seedance audio</label>
+        <select name="seedance_generate_audio">
+          <option value="">Default (Yes)</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select></div>
+      <div><label>Seedance watermark</label>
+        <select name="seedance_watermark">
+          <option value="">Default (No)</option>
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select></div>
     </div>
     <div class="row">
       <div><label>Brand logo path</label><input name="brand_logo_path" placeholder="/opt/reachly/assets/hygaar_logo.png"/></div>

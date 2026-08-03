@@ -24,13 +24,13 @@ def run_daily(
 ) -> None:
     sched = BlockingScheduler(timezone=timezone)
 
-    for pt in linkedin_times:
+    for slot_index, pt in enumerate(linkedin_times):
         h, m = (int(x) for x in pt.strip().split(":"))
 
-        def _li_job(hour=h, minute=m, slot=pt):
+        def _li_job(hour=h, minute=m, slot=pt, index=slot_index):
             logger.info("LinkedIn trigger at %s (%s).", slot, timezone)
             try:
-                results = agent.run_linkedin_slot()
+                results = agent.run_linkedin_slot(slot_index=index)
                 if (
                     agent.settings.enable_engagement
                     and results.get(Platform.linkedin)
