@@ -75,7 +75,10 @@ def create_app() -> FastAPI:
     def home(request: Request):
         if not _auth_ok(request, cfg):
             return templates.TemplateResponse(
-                request, "auth.html", {"error": None}, status_code=401
+                request,
+                "auth.html",
+                {"error": None, "base_path": _base_path(request)},
+                status_code=401,
             )
         asset_hours = _asset_hours(request.query_params.get("assets"))
         dash = load_dashboard_settings(cfg.data_dir)
@@ -101,6 +104,7 @@ def create_app() -> FastAPI:
                 "logs": logs,
                 "assets": assets,
                 "asset_hours": asset_hours,
+                "base_path": _base_path(request),
                 "default_times": ", ".join(DEFAULT_POST_TIMES),
             },
         )
@@ -109,9 +113,12 @@ def create_app() -> FastAPI:
     def auth(request: Request, token: str = Form(...)):
         if token == (cfg.dashboard_token or ""):
             request.session["reachly_auth"] = True
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse(_dashboard_url(request, "/"), status_code=303)
         return templates.TemplateResponse(
-            request, "auth.html", {"error": "Invalid token."}, status_code=401
+            request,
+            "auth.html",
+            {"error": "Invalid token.", "base_path": _base_path(request)},
+            status_code=401,
         )
 
     @app.post("/save")
@@ -134,7 +141,7 @@ def create_app() -> FastAPI:
             context_repo=context_repo.strip(),
             instagram_offset_minutes=instagram_offset_minutes,
         )
-        return RedirectResponse("/?saved=1", status_code=303)
+        return RedirectResponse(_dashboard_url(request, "/?saved=1"), status_code=303)
 
     @app.post("/run-now")
     def run_now(request: Request, theme: str = Form("")):
@@ -222,6 +229,20 @@ def _recent_logs(data_dir: Path, limit: int = 15) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def _base_path(request: Request) -> str:
+    raw = request.headers.get("x-forwarded-prefix", "")
+    if not raw:
+        return ""
+    cleaned = "/" + raw.strip().strip("/")
+    return "" if cleaned == "/" else cleaned
+
+
+def _dashboard_url(request: Request, path: str) -> str:
+    prefix = _base_path(request)
+    suffix = path if path.startswith("/") else f"/{path}"
+    return f"{prefix}{suffix}" if prefix else suffix
 
 
 def _asset_hours(value: str | None) -> int:
