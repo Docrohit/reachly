@@ -27,3 +27,11 @@
 ## Access Note
 
 The single-tenant dashboard is running on port 8765 but is not publicly routed through DNS right now. A local SSH tunnel was started on this Mac for immediate access at `http://127.0.0.1:8765/?assets=24`. Use the existing `REACHLY_DASHBOARD_TOKEN` to sign in; do not paste it into chat or commit it.
+
+## Video RCA Addendum
+
+- Asset `984` was silent at the source file level: `ffprobe` showed H.264 video only and no audio stream. It was not a Reachly player-only issue; any platform receiving that MP4 would also receive a silent video.
+- The dashboard file `/opt/reachly/.reachly_data/media/video_1785738115_48c33215.mp4` was replaced with a voiced AAC MP4, and the original was backed up as `video_1785738115_48c33215_silent_backup.mp4`.
+- LinkedIn repost row `1001` submitted successfully through browser mode. A company-page verification pass found the hook text visible, but browser mode still does not capture a permalink.
+- Instagram video repost failed again at media upload: `.reachly_data/debug/instagram_media_upload_failed_1785755904.png`.
+- Live `.env` currently has `VIDEO_PROVIDER=none` and no OpenAI/ElevenLabs/Seedance keys, so true automated video remakes require adding the provider credentials back to server env or generating externally.
