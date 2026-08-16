@@ -7,6 +7,7 @@ arrived.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ logger = logging.getLogger("reachly.orchestrator")
 
 def build_agent_for_user(user: User) -> Agent | None:
     settings = get_settings()
+    use_server_env = _server_env_fallback_allowed(user, settings)
     with get_session() as session:
         profile_row = session.exec(
             select(BusinessProfileRow).where(BusinessProfileRow.user_id == user.id)
@@ -46,8 +48,22 @@ def build_agent_for_user(user: User) -> Agent | None:
         ).all()
 
     providers = decrypt_dict(profile_row.providers_vault) if profile_row.providers_vault else {}
-    media_plan = _media_plan(providers.get("daily_media_plan"))
-    if not media_plan and profile_row.video_provider != "none":
+    media_plan = _media_plan(
+        _provider_value(
+            providers,
+            "daily_media_plan",
+            "REACHLY_DAILY_MEDIA_PLAN",
+            use_env=use_server_env,
+        )
+    )
+    video_provider = _provider_value(
+        providers,
+        "video_provider",
+        "VIDEO_PROVIDER",
+        default=profile_row.video_provider,
+        use_env=use_server_env,
+    )
+    if not media_plan and video_provider != "none":
         media_plan = ["image", "image", "image", "longform_video", "short_video", "image"]
 
     business = BusinessProfile(
@@ -66,76 +82,318 @@ def build_agent_for_user(user: User) -> Agent | None:
     for row in cred_rows:
         secrets = decrypt_dict(row.vault) if row.vault else {}
         platform = Platform(row.platform)
-        platforms[platform] = _creds_from_secrets(platform, PlatformMode(row.mode), secrets)
+        platforms[platform] = _creds_from_secrets(
+            platform,
+            PlatformMode(row.mode),
+            secrets,
+            use_env=use_server_env,
+        )
+    if use_server_env:
+        for platform in Platform:
+            if platform in platforms:
+                continue
+            creds = _creds_from_secrets(platform, PlatformMode.off, {}, use_env=True)
+            if creds.enabled:
+                platforms[platform] = creds
 
     data_dir = Path(settings.media_dir).parent / "agents" / f"user_{user.id}"
     global_knowledge_bank = knowledge_bank_path(Path(settings.media_dir).parent / "knowledge")
     context_doc_paths = [str(global_knowledge_bank)] if global_knowledge_bank.is_file() else []
     agent_settings = AgentSettings(
-        llm_provider=profile_row.llm_provider,
-        gemini_api_key=providers.get("gemini_api_key"),
-        openai_api_key=providers.get("openai_api_key"),
-        anthropic_api_key=providers.get("anthropic_api_key"),
-        image_provider=profile_row.image_provider,
-        gemini_image_model=providers.get("gemini_image_model", "gemini-2.5-flash-image"),
-        video_provider=profile_row.video_provider,
-        hygaar_base_url=providers.get("hygaar_base_url"),
-        hygaar_api_token=providers.get("hygaar_api_token"),
-        seedance_api_key=providers.get("seedance_api_key"),
-        seedance_base_url=providers.get(
-            "seedance_base_url",
-            "https://ark.ap-southeast.bytepluses.com/api/v3",
+        llm_provider=_provider_value(
+            providers,
+            "llm_provider",
+            "LLM_PROVIDER",
+            default=profile_row.llm_provider,
+            use_env=use_server_env,
         ),
-        seedance_model=providers.get("seedance_model", "seedance_2_5"),
-        seedance_fallback_model=providers.get("seedance_fallback_model", "seedance_2_0"),
-        seedance_ratio=providers.get("seedance_ratio", "9:16"),
-        seedance_target_duration=_as_int(providers.get("seedance_target_duration"), 30),
-        seedance_clip_count=_as_int(providers.get("seedance_clip_count"), 0),
-        seedance_clip_duration=_as_int(providers.get("seedance_clip_duration"), 15),
-        seedance_generate_audio=_as_bool(providers.get("seedance_generate_audio"), True),
-        seedance_watermark=_as_bool(providers.get("seedance_watermark"), False),
+        llm_model=_provider_value(providers, "llm_model", "LLM_MODEL", use_env=use_server_env),
+        gemini_api_key=_provider_value(
+            providers,
+            "gemini_api_key",
+            "GEMINI_API_KEY",
+            use_env=use_server_env,
+        ),
+        openai_api_key=_provider_value(
+            providers,
+            "openai_api_key",
+            "OPENAI_API_KEY",
+            use_env=use_server_env,
+        ),
+        anthropic_api_key=_provider_value(
+            providers,
+            "anthropic_api_key",
+            "ANTHROPIC_API_KEY",
+            use_env=use_server_env,
+        ),
+        image_provider=_provider_value(
+            providers,
+            "image_provider",
+            "IMAGE_PROVIDER",
+            default=profile_row.image_provider,
+            use_env=use_server_env,
+        ),
+        gemini_image_model=_provider_value(
+            providers,
+            "gemini_image_model",
+            "GEMINI_IMAGE_MODEL",
+            default="gemini-2.5-flash-image",
+            use_env=use_server_env,
+        ),
+        video_provider=video_provider,
+        hygaar_base_url=_provider_value(
+            providers,
+            "hygaar_base_url",
+            "HYGAAR_BASE_URL",
+            use_env=use_server_env,
+        ),
+        hygaar_api_token=_provider_value(
+            providers,
+            "hygaar_api_token",
+            "HYGAAR_API_TOKEN",
+            use_env=use_server_env,
+        ),
+        seedance_api_key=_provider_value(
+            providers,
+            "seedance_api_key",
+            "SEEDANCE_API_KEY",
+            "ARK_API_KEY",
+            "MODELARK_API_KEY",
+            use_env=use_server_env,
+        ),
+        seedance_base_url=_provider_value(
+            providers,
+            "seedance_base_url",
+            "SEEDANCE_BASE_URL",
+            default="https://ark.ap-southeast.bytepluses.com/api/v3",
+            use_env=use_server_env,
+        ),
+        seedance_model=_provider_value(
+            providers,
+            "seedance_model",
+            "SEEDANCE_MODEL",
+            default="seedance_2_5",
+            use_env=use_server_env,
+        ),
+        seedance_fallback_model=_provider_value(
+            providers,
+            "seedance_fallback_model",
+            "SEEDANCE_FALLBACK_MODEL",
+            default="seedance_2_0",
+            use_env=use_server_env,
+        ),
+        seedance_ratio=_provider_value(
+            providers,
+            "seedance_ratio",
+            "SEEDANCE_RATIO",
+            default="9:16",
+            use_env=use_server_env,
+        ),
+        seedance_target_duration=_as_int(
+            _provider_value(
+                providers,
+                "seedance_target_duration",
+                "SEEDANCE_TARGET_DURATION",
+                use_env=use_server_env,
+            ),
+            30,
+        ),
+        seedance_clip_count=_as_int(
+            _provider_value(
+                providers,
+                "seedance_clip_count",
+                "SEEDANCE_CLIP_COUNT",
+                use_env=use_server_env,
+            ),
+            0,
+        ),
+        seedance_clip_duration=_as_int(
+            _provider_value(
+                providers,
+                "seedance_clip_duration",
+                "SEEDANCE_CLIP_DURATION",
+                use_env=use_server_env,
+            ),
+            15,
+        ),
+        seedance_generate_audio=_as_bool(
+            _provider_value(
+                providers,
+                "seedance_generate_audio",
+                "SEEDANCE_GENERATE_AUDIO",
+                use_env=use_server_env,
+            ),
+            True,
+        ),
+        seedance_watermark=_as_bool(
+            _provider_value(
+                providers,
+                "seedance_watermark",
+                "SEEDANCE_WATERMARK",
+                use_env=use_server_env,
+            ),
+            False,
+        ),
         longform_video_enabled=user.longform_video_enabled,
-        longform_video_target_seconds=_as_int(providers.get("longform_video_target_seconds"), 90),
-        longform_video_card_seconds=_as_int(providers.get("longform_video_card_seconds"), 18),
-        longform_video_max_card_retries=_as_int(providers.get("longform_video_max_card_retries"), 2),
+        longform_video_target_seconds=_as_int(
+            _provider_value(
+                providers,
+                "longform_video_target_seconds",
+                "REACHLY_LONGFORM_VIDEO_TARGET_SECONDS",
+                use_env=use_server_env,
+            ),
+            90,
+        ),
+        longform_video_card_seconds=_as_int(
+            _provider_value(
+                providers,
+                "longform_video_card_seconds",
+                "REACHLY_LONGFORM_VIDEO_CARD_SECONDS",
+                use_env=use_server_env,
+            ),
+            18,
+        ),
+        longform_video_max_card_retries=_as_int(
+            _provider_value(
+                providers,
+                "longform_video_max_card_retries",
+                "REACHLY_LONGFORM_VIDEO_MAX_CARD_RETRIES",
+                use_env=use_server_env,
+            ),
+            2,
+        ),
         longform_video_title_alignment_threshold=_as_int(
-            providers.get("longform_video_title_alignment_threshold"),
+            _provider_value(
+                providers,
+                "longform_video_title_alignment_threshold",
+                "REACHLY_LONGFORM_VIDEO_TITLE_ALIGNMENT_THRESHOLD",
+                use_env=use_server_env,
+            ),
             7,
         ),
-        longform_video_qc_enabled=_as_bool(providers.get("longform_video_qc_enabled"), True),
-        longform_video_qc_model=providers.get("longform_video_qc_model", "gemini-2.5-flash"),
-        openai_transcription_model=providers.get("openai_transcription_model", "gpt-4o-transcribe"),
-        openai_transcription_fallback_model=providers.get(
-            "openai_transcription_fallback_model",
-            "whisper-1",
+        longform_video_qc_enabled=_as_bool(
+            _provider_value(
+                providers,
+                "longform_video_qc_enabled",
+                "REACHLY_LONGFORM_VIDEO_QC",
+                use_env=use_server_env,
+            ),
+            True,
         ),
-        elevenlabs_api_key=providers.get("elevenlabs_api_key"),
-        elevenlabs_voice_id=providers.get("elevenlabs_voice_id", "JBFqnCBsd6RMkjVDRZzb"),
-        elevenlabs_model=providers.get("elevenlabs_model", "eleven_v3"),
-        elevenlabs_output_format=providers.get("elevenlabs_output_format", "mp3_44100_128"),
+        longform_video_qc_model=_provider_value(
+            providers,
+            "longform_video_qc_model",
+            "REACHLY_LONGFORM_VIDEO_QC_MODEL",
+            default="gemini-2.5-flash",
+            use_env=use_server_env,
+        ),
+        openai_transcription_model=_provider_value(
+            providers,
+            "openai_transcription_model",
+            "REACHLY_OPENAI_TRANSCRIPTION_MODEL",
+            default="gpt-4o-transcribe",
+            use_env=use_server_env,
+        ),
+        openai_transcription_fallback_model=_provider_value(
+            providers,
+            "openai_transcription_fallback_model",
+            "REACHLY_OPENAI_TRANSCRIPTION_FALLBACK_MODEL",
+            default="whisper-1",
+            use_env=use_server_env,
+        ),
+        elevenlabs_api_key=_provider_value(
+            providers,
+            "elevenlabs_api_key",
+            "ELEVENLABS_API_KEY",
+            use_env=use_server_env,
+        ),
+        elevenlabs_voice_id=_provider_value(
+            providers,
+            "elevenlabs_voice_id",
+            "REACHLY_ELEVENLABS_VOICE_ID",
+            "ELEVENLABS_VOICE_ID",
+            default="JBFqnCBsd6RMkjVDRZzb",
+            use_env=use_server_env,
+        ),
+        elevenlabs_model=_provider_value(
+            providers,
+            "elevenlabs_model",
+            "REACHLY_ELEVENLABS_MODEL",
+            "ELEVENLABS_MODEL_ID",
+            default="eleven_v3",
+            use_env=use_server_env,
+        ),
+        elevenlabs_output_format=_provider_value(
+            providers,
+            "elevenlabs_output_format",
+            "REACHLY_ELEVENLABS_OUTPUT_FORMAT",
+            default="mp3_44100_128",
+            use_env=use_server_env,
+        ),
+        spoken_brand_name=_provider_value(
+            providers,
+            "spoken_brand_name",
+            "REACHLY_SPOKEN_BRAND_NAME",
+            use_env=use_server_env,
+        ),
         daily_media_plan=media_plan,
-        brand_logo_path=providers.get("brand_logo_path"),
-        brand_logo_position=providers.get("brand_logo_position", "bottom-right"),
+        brand_logo_path=_provider_value(
+            providers,
+            "brand_logo_path",
+            "BRAND_LOGO_PATH",
+            use_env=use_server_env,
+        ),
+        brand_logo_position=_provider_value(
+            providers,
+            "brand_logo_position",
+            "BRAND_LOGO_POSITION",
+            default="bottom-right",
+            use_env=use_server_env,
+        ),
         attach_image=user.attach_image,
         dry_run=user.dry_run,
         data_dir=data_dir,
         public_media_base_url=settings.public_media_url,
         public_media_dir=Path(settings.media_dir),
-        context_repo=profile_row.context_repo,
+        context_repo=_provider_value(
+            providers,
+            "context_repo",
+            "REACHLY_CONTEXT_REPO",
+            default=profile_row.context_repo,
+            use_env=use_server_env,
+        ),
         context_doc_paths=context_doc_paths,
-        posting_style=profile_row.posting_style,
+        posting_style=_provider_value(
+            providers,
+            "posting_style",
+            "REACHLY_POSTING_STYLE",
+            default=profile_row.posting_style,
+            use_env=use_server_env,
+        ),
         enable_engagement=user.enable_engagement,
         engagement_delay_minutes=user.engagement_delay_minutes,
         engagement_max_comments=user.engagement_max_comments,
-        text_platform_image_rate=float(providers.get("text_platform_image_rate", 0.5)),
+        text_platform_image_rate=float(
+            _provider_value(
+                providers,
+                "text_platform_image_rate",
+                "REACHLY_TEXT_PLATFORM_IMAGE_RATE",
+                default="0.5",
+                use_env=use_server_env,
+            )
+        ),
         linkedin_image_rate=(
             float(providers["linkedin_image_rate"])
             if providers.get("linkedin_image_rate")
+            else float(os.environ["REACHLY_LINKEDIN_IMAGE_RATE"])
+            if use_server_env and os.getenv("REACHLY_LINKEDIN_IMAGE_RATE")
             else None
         ),
         twitter_image_rate=(
             float(providers["twitter_image_rate"])
             if providers.get("twitter_image_rate")
+            else float(os.environ["REACHLY_TWITTER_IMAGE_RATE"])
+            if use_server_env and os.getenv("REACHLY_TWITTER_IMAGE_RATE")
             else None
         ),
     )
@@ -154,64 +412,242 @@ def _normalize_tags(value: str) -> list[str]:
     return out
 
 
-def _creds_from_secrets(platform: Platform, mode: PlatformMode, s: dict) -> PlatformCredentials:
+def _server_env_fallback_allowed(user: User, settings) -> bool:
+    roles = {role.strip().lower() for role in (user.roles or "").split(",") if role.strip()}
+    email = (user.email or "").strip().lower()
+    return user.auth_provider == "hygaar" and (
+        email in settings.hygaar_pro_emails or "superadmin" in roles
+    )
+
+
+def _provider_value(
+    source: dict,
+    key: str,
+    *env_names: str,
+    default: str | None = None,
+    use_env: bool = False,
+) -> str | None:
+    value = source.get(key)
+    if value not in (None, ""):
+        return value
+    if use_env:
+        for env_name in env_names:
+            env_value = os.getenv(env_name)
+            if env_value not in (None, ""):
+                return env_value
+    return default
+
+
+def _platform_mode_with_env(
+    platform: Platform,
+    mode: PlatformMode,
+    *,
+    use_env: bool = False,
+) -> PlatformMode:
+    if not use_env:
+        return mode
+    env_value = os.getenv(f"{platform.value.upper()}_MODE")
+    if not env_value:
+        return mode
+    try:
+        return PlatformMode(env_value.lower())
+    except ValueError:
+        return mode
+
+
+def _creds_from_secrets(
+    platform: Platform,
+    mode: PlatformMode,
+    s: dict,
+    *,
+    use_env: bool = False,
+) -> PlatformCredentials:
+    mode = _platform_mode_with_env(platform, mode, use_env=use_env)
     if platform == Platform.twitter:
         return PlatformCredentials(
-            platform=platform, mode=mode,
-            api_token=s.get("oauth2_token"),
+            platform=platform,
+            mode=mode,
+            api_token=_provider_value(s, "oauth2_token", "TWITTER_OAUTH2_TOKEN", use_env=use_env),
             extra={
-                "login_identifier": s.get("login_identifier", ""),
-                "consumer_key": s.get("consumer_key", ""),
-                "consumer_secret": s.get("consumer_secret", ""),
-                "access_token": s.get("access_token", ""),
-                "access_token_secret": s.get("access_token_secret", ""),
+                "login_identifier": _provider_value(
+                    s,
+                    "login_identifier",
+                    "TWITTER_LOGIN_IDENTIFIER",
+                    default="",
+                    use_env=use_env,
+                ),
+                "consumer_key": _provider_value(
+                    s,
+                    "consumer_key",
+                    "TWITTER_CONSUMER_KEY",
+                    default="",
+                    use_env=use_env,
+                ),
+                "consumer_secret": _provider_value(
+                    s,
+                    "consumer_secret",
+                    "TWITTER_CONSUMER_SECRET",
+                    default="",
+                    use_env=use_env,
+                ),
+                "access_token": _provider_value(
+                    s,
+                    "access_token",
+                    "TWITTER_ACCESS_TOKEN",
+                    default="",
+                    use_env=use_env,
+                ),
+                "access_token_secret": _provider_value(
+                    s,
+                    "access_token_secret",
+                    "TWITTER_ACCESS_TOKEN_SECRET",
+                    default="",
+                    use_env=use_env,
+                ),
             },
-            username=s.get("username"), password=s.get("password"),
+            username=_provider_value(s, "username", "TWITTER_USERNAME", use_env=use_env),
+            password=_provider_value(s, "password", "TWITTER_PASSWORD", use_env=use_env),
         )
     if platform == Platform.linkedin:
         return PlatformCredentials(
-            platform=platform, mode=mode,
-            api_token=s.get("access_token"),
+            platform=platform,
+            mode=mode,
+            api_token=_provider_value(s, "access_token", "LINKEDIN_ACCESS_TOKEN", use_env=use_env),
             extra={
-                "person_urn": s.get("person_urn", ""),
-                "organization_id": s.get("organization_id", ""),
-                "post_as": s.get("post_as", ""),
-                "company_admin_url": s.get("company_admin_url", ""),
+                "person_urn": _provider_value(
+                    s,
+                    "person_urn",
+                    "LINKEDIN_PERSON_URN",
+                    default="",
+                    use_env=use_env,
+                ),
+                "organization_id": _provider_value(
+                    s,
+                    "organization_id",
+                    "LINKEDIN_ORGANIZATION_ID",
+                    default="",
+                    use_env=use_env,
+                ),
+                "post_as": _provider_value(
+                    s,
+                    "post_as",
+                    "LINKEDIN_POST_AS",
+                    default="",
+                    use_env=use_env,
+                ),
+                "company_admin_url": _provider_value(
+                    s,
+                    "company_admin_url",
+                    "LINKEDIN_COMPANY_ADMIN_URL",
+                    default="",
+                    use_env=use_env,
+                ),
             },
-            username=s.get("email"), password=s.get("password"),
+            username=_provider_value(s, "email", "LINKEDIN_EMAIL", use_env=use_env),
+            password=_provider_value(s, "password", "LINKEDIN_PASSWORD", use_env=use_env),
         )
     if platform == Platform.instagram:
         return PlatformCredentials(
-            platform=platform, mode=mode,
-            api_token=s.get("access_token"),
-            extra={"user_id": s.get("user_id", "")},
-            username=s.get("username"), password=s.get("password"),
+            platform=platform,
+            mode=mode,
+            api_token=_provider_value(s, "access_token", "INSTAGRAM_ACCESS_TOKEN", use_env=use_env),
+            extra={
+                "user_id": _provider_value(
+                    s,
+                    "user_id",
+                    "INSTAGRAM_USER_ID",
+                    default="",
+                    use_env=use_env,
+                )
+            },
+            username=_provider_value(s, "username", "INSTAGRAM_USERNAME", use_env=use_env),
+            password=_provider_value(s, "password", "INSTAGRAM_PASSWORD", use_env=use_env),
         )
     if platform == Platform.medium:
         return PlatformCredentials(
             platform=platform,
             mode=mode,
             extra={
-                "publish_status": s.get("publish_status", "draft"),
-                "expected_account": s.get("expected_account", ""),
+                "publish_status": _provider_value(
+                    s,
+                    "publish_status",
+                    "MEDIUM_PUBLISH_STATUS",
+                    default="draft",
+                    use_env=use_env,
+                ),
+                "expected_account": _provider_value(
+                    s,
+                    "expected_account",
+                    "MEDIUM_EXPECTED_ACCOUNT",
+                    default="",
+                    use_env=use_env,
+                ),
             },
-            username=s.get("email"),
-            password=s.get("password"),
+            username=_provider_value(s, "email", "MEDIUM_EMAIL", use_env=use_env),
+            password=_provider_value(s, "password", "MEDIUM_PASSWORD", use_env=use_env),
         )
     if platform == Platform.youtube:
         return PlatformCredentials(
             platform=platform,
             mode=mode,
-            api_token=s.get("access_token"),
+            api_token=_provider_value(s, "access_token", "YOUTUBE_ACCESS_TOKEN", use_env=use_env),
             extra={
-                "refresh_token": s.get("refresh_token", ""),
-                "client_id": s.get("client_id", ""),
-                "client_secret": s.get("client_secret", ""),
-                "token_uri": s.get("token_uri", "https://oauth2.googleapis.com/token"),
-                "privacy_status": s.get("privacy_status", "private"),
-                "category_id": s.get("category_id", "22"),
-                "notify_subscribers": s.get("notify_subscribers", "false"),
-                "default_tags": s.get("default_tags", ""),
+                "refresh_token": _provider_value(
+                    s,
+                    "refresh_token",
+                    "YOUTUBE_REFRESH_TOKEN",
+                    default="",
+                    use_env=use_env,
+                ),
+                "client_id": _provider_value(
+                    s,
+                    "client_id",
+                    "YOUTUBE_CLIENT_ID",
+                    default="",
+                    use_env=use_env,
+                ),
+                "client_secret": _provider_value(
+                    s,
+                    "client_secret",
+                    "YOUTUBE_CLIENT_SECRET",
+                    default="",
+                    use_env=use_env,
+                ),
+                "token_uri": _provider_value(
+                    s,
+                    "token_uri",
+                    "YOUTUBE_TOKEN_URI",
+                    default="https://oauth2.googleapis.com/token",
+                    use_env=use_env,
+                ),
+                "privacy_status": _provider_value(
+                    s,
+                    "privacy_status",
+                    "YOUTUBE_PRIVACY_STATUS",
+                    default="private",
+                    use_env=use_env,
+                ),
+                "category_id": _provider_value(
+                    s,
+                    "category_id",
+                    "YOUTUBE_CATEGORY_ID",
+                    default="22",
+                    use_env=use_env,
+                ),
+                "notify_subscribers": _provider_value(
+                    s,
+                    "notify_subscribers",
+                    "YOUTUBE_NOTIFY_SUBSCRIBERS",
+                    default="false",
+                    use_env=use_env,
+                ),
+                "default_tags": _provider_value(
+                    s,
+                    "default_tags",
+                    "YOUTUBE_DEFAULT_TAGS",
+                    default="",
+                    use_env=use_env,
+                ),
             },
         )
     raise ValueError(platform)
@@ -459,14 +895,30 @@ def _media_plan(value: str | None) -> list[str]:
 
 def _daily_media_plan_for_user(user_id: int) -> list[str]:
     with get_session() as session:
+        user = session.get(User, user_id)
         profile = session.exec(
             select(BusinessProfileRow).where(BusinessProfileRow.user_id == user_id)
         ).first()
     if not profile:
         return []
     providers = decrypt_dict(profile.providers_vault) if profile.providers_vault else {}
-    media_plan = _media_plan(providers.get("daily_media_plan"))
-    if not media_plan and profile.video_provider != "none":
+    use_server_env = _server_env_fallback_allowed(user, get_settings()) if user else False
+    media_plan = _media_plan(
+        _provider_value(
+            providers,
+            "daily_media_plan",
+            "REACHLY_DAILY_MEDIA_PLAN",
+            use_env=use_server_env,
+        )
+    )
+    video_provider = _provider_value(
+        providers,
+        "video_provider",
+        "VIDEO_PROVIDER",
+        default=profile.video_provider,
+        use_env=use_server_env,
+    )
+    if not media_plan and video_provider != "none":
         return ["image", "image", "image", "longform_video", "short_video", "image"]
     return media_plan
 

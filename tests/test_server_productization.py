@@ -381,6 +381,59 @@ class ServerProductizationTests(unittest.TestCase):
 
         self.assertEqual(creds.extra["organization_id"], "123456")
 
+    def test_saas_orchestrator_can_use_server_env_for_hygaar_pro_users(self):
+        from reachly.models import Platform, PlatformMode
+        from server.db import User
+        from server.orchestrator import (
+            _creds_from_secrets,
+            _server_env_fallback_allowed,
+            _provider_value,
+        )
+        from server.settings import ServerSettings
+
+        os.environ["REACHLY_HYGAAR_PRO_EMAILS"] = "rohitsharma@hygaar.com"
+        os.environ["GEMINI_API_KEY"] = "server-gemini"
+        os.environ["LINKEDIN_MODE"] = "api"
+        os.environ["LINKEDIN_ACCESS_TOKEN"] = "server-linkedin-token"
+        os.environ["LINKEDIN_ORGANIZATION_ID"] = "105452301"
+
+        user = User(auth_provider="hygaar", email="rohitsharma@hygaar.com")
+        self.assertTrue(_server_env_fallback_allowed(user, ServerSettings()))
+        self.assertEqual(
+            _provider_value({}, "gemini_api_key", "GEMINI_API_KEY", use_env=True),
+            "server-gemini",
+        )
+
+        creds = _creds_from_secrets(Platform.linkedin, PlatformMode.off, {}, use_env=True)
+
+        self.assertEqual(creds.mode, PlatformMode.api)
+        self.assertEqual(creds.api_token, "server-linkedin-token")
+        self.assertEqual(creds.extra["organization_id"], "105452301")
+
+    def test_saas_orchestrator_blocks_server_env_for_non_hygaar_users(self):
+        from reachly.models import Platform, PlatformMode
+        from server.db import User
+        from server.orchestrator import (
+            _creds_from_secrets,
+            _server_env_fallback_allowed,
+            _provider_value,
+        )
+        from server.settings import ServerSettings
+
+        os.environ["REACHLY_HYGAAR_PRO_EMAILS"] = "rohitsharma@hygaar.com"
+        os.environ["GEMINI_API_KEY"] = "server-gemini"
+        os.environ["LINKEDIN_MODE"] = "api"
+        os.environ["LINKEDIN_ACCESS_TOKEN"] = "server-linkedin-token"
+
+        user = User(auth_provider="telegram", email="rohitsharma@hygaar.com")
+        self.assertFalse(_server_env_fallback_allowed(user, ServerSettings()))
+        self.assertIsNone(_provider_value({}, "gemini_api_key", "GEMINI_API_KEY", use_env=False))
+
+        creds = _creds_from_secrets(Platform.linkedin, PlatformMode.off, {}, use_env=False)
+
+        self.assertEqual(creds.mode, PlatformMode.off)
+        self.assertIsNone(creds.api_token)
+
     def test_otp_code_is_six_digits(self):
         from server.telegram_bot import secrets
 
