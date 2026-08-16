@@ -147,6 +147,8 @@ jobs:
             sudo python3 -m venv '$TARGET_PATH/.venv'
             sudo '$TARGET_PATH/.venv/bin/pip' install --upgrade pip -q
             sudo '$TARGET_PATH/.venv/bin/pip' install -q -r '$TARGET_PATH/requirements.txt'
+            sudo '$TARGET_PATH/.venv/bin/python' -m playwright install-deps chromium
+            sudo -u reachly -H '$TARGET_PATH/.venv/bin/python' -m playwright install chromium
             if [ '$REACHLY_DEPLOY_TARGET' = 'agent' ]; then
               sudo cp '$TARGET_PATH/deploy/reachly-agent.service' /etc/systemd/system/reachly-agent.service
               sudo cp '$TARGET_PATH/deploy/reachly-dashboard.service' /etc/systemd/system/reachly-dashboard.service
