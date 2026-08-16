@@ -31,9 +31,11 @@ from .db import BusinessProfileRow, PlatformCredRow, PostLogRow, User, get_sessi
 from .settings import get_settings
 
 logger = logging.getLogger("reachly.orchestrator")
+_FALLBACK_ENV_FILES_LOADED = False
 
 
 def build_agent_for_user(user: User) -> Agent | None:
+    _load_server_env_fallback_files()
     settings = get_settings()
     use_server_env = _server_env_fallback_allowed(user, settings)
     with get_session() as session:
@@ -56,13 +58,7 @@ def build_agent_for_user(user: User) -> Agent | None:
             use_env=use_server_env,
         )
     )
-    video_provider = _provider_value(
-        providers,
-        "video_provider",
-        "VIDEO_PROVIDER",
-        default=profile_row.video_provider,
-        use_env=use_server_env,
-    )
+    video_provider = profile_row.video_provider
     if not media_plan and video_provider != "none":
         media_plan = ["image", "image", "image", "longform_video", "short_video", "image"]
 
@@ -410,6 +406,32 @@ def _normalize_tags(value: str) -> list[str]:
         if raw:
             out.append(raw if raw.startswith("#") else f"#{raw}")
     return out
+
+
+def _load_server_env_fallback_files() -> None:
+    global _FALLBACK_ENV_FILES_LOADED
+    if _FALLBACK_ENV_FILES_LOADED:
+        return
+    _FALLBACK_ENV_FILES_LOADED = True
+    try:
+        from dotenv import load_dotenv
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("python-dotenv unavailable; server env fallback files skipped: %s", exc)
+        return
+
+    configured = [
+        item.strip()
+        for item in os.getenv("REACHLY_SERVER_ENV_FALLBACK_FILES", "").split(",")
+        if item.strip()
+    ]
+    fallback_paths = configured or [
+        "/opt/reachly/.env",
+        "/var/www/html/prod-env/hdb_backend/hdb/.env",
+    ]
+    for raw_path in fallback_paths:
+        path = Path(raw_path)
+        if path.is_file():
+            load_dotenv(path, override=False)
 
 
 def _server_env_fallback_allowed(user: User, settings) -> bool:
@@ -894,6 +916,7 @@ def _media_plan(value: str | None) -> list[str]:
 
 
 def _daily_media_plan_for_user(user_id: int) -> list[str]:
+    _load_server_env_fallback_files()
     with get_session() as session:
         user = session.get(User, user_id)
         profile = session.exec(
@@ -911,13 +934,7 @@ def _daily_media_plan_for_user(user_id: int) -> list[str]:
             use_env=use_server_env,
         )
     )
-    video_provider = _provider_value(
-        providers,
-        "video_provider",
-        "VIDEO_PROVIDER",
-        default=profile.video_provider,
-        use_env=use_server_env,
-    )
+    video_provider = profile.video_provider
     if not media_plan and video_provider != "none":
         return ["image", "image", "image", "longform_video", "short_video", "image"]
     return media_plan

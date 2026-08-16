@@ -126,6 +126,7 @@ jobs:
               --exclude '.env' \
               --exclude '.venv' \
               --exclude '.reachly_data' \
+              --exclude 'agents' \
               --exclude 'data' \
               --exclude 'reachly_media' \
               --exclude '*.db' \
