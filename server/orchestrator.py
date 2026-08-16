@@ -414,7 +414,7 @@ def _load_server_env_fallback_files() -> None:
         return
     _FALLBACK_ENV_FILES_LOADED = True
     try:
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
     except Exception as exc:  # noqa: BLE001
         logger.warning("python-dotenv unavailable; server env fallback files skipped: %s", exc)
         return
@@ -431,7 +431,9 @@ def _load_server_env_fallback_files() -> None:
     for raw_path in fallback_paths:
         path = Path(raw_path)
         if path.is_file():
-            load_dotenv(path, override=False)
+            for key, value in dotenv_values(path).items():
+                if value not in (None, "") and os.getenv(key) in (None, ""):
+                    os.environ[key] = value
 
 
 def _server_env_fallback_allowed(user: User, settings) -> bool:
