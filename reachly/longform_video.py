@@ -176,6 +176,8 @@ class LongFormVideoConfig:
     elevenlabs_output_format: str = "mp3_44100_128"
     openai_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    brand_logo_path: Optional[str] = None
+    brand_logo_position: str = "bottom-right"
 
 
 class LongFormVideoMaker:
@@ -231,7 +233,11 @@ class LongFormVideoMaker:
 
         cards = self._build_cards(plan, transcript, duration=audio_duration)
         clip_attempts, selected = self._generate_cards(cards, media_dir=media_dir)
-        final_media = LongFormRenderer(media_dir).render(
+        final_media = LongFormRenderer(
+            media_dir,
+            logo_path=self.config.brand_logo_path,
+            logo_position=self.config.brand_logo_position,
+        ).render(
             cards=cards,
             selected_attempts=selected,
             audio_path=audio_path,
@@ -549,8 +555,16 @@ class GeminiClipQualityAnalyzer:
 
 
 class LongFormRenderer:
-    def __init__(self, out_dir: Path):
+    def __init__(
+        self,
+        out_dir: Path,
+        *,
+        logo_path: Optional[str] = None,
+        logo_position: str = "bottom-right",
+    ):
         self.out_dir = Path(out_dir)
+        self.logo_path = logo_path
+        self.logo_position = logo_position
 
     def render(
         self,
@@ -582,14 +596,161 @@ class LongFormRenderer:
 
         joined_path = self.out_dir / f"longform_silent_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
         _concat_normalized_clips(normalized, joined_path)
-        final_path = self.out_dir / f"longform_final_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
-        return mux_narration_video(
+        narrated_path = self.out_dir / f"longform_narrated_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
+        media = mux_narration_video(
             joined_path,
             audio_path,
-            final_path,
+            narrated_path,
             duration=audio_duration,
             prompt=prompt,
         )
+        final_path = self.out_dir / f"longform_final_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
+        _apply_longform_video_overlays(
+            Path(media.local_path),
+            final_path,
+            cards=cards,
+            logo_path=self.logo_path,
+            logo_position=self.logo_position,
+        )
+        return GeneratedMedia(
+            kind="video",
+            local_path=str(final_path),
+            public_url=None,
+            mime_type="video/mp4",
+            prompt=prompt,
+        )
+
+
+def _apply_longform_video_overlays(
+    source_path: Path,
+    out_path: Path,
+    *,
+    cards: list[VisualCard],
+    logo_path: Optional[str],
+    logo_position: str = "bottom-right",
+) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for long-form video rendering.")
+
+    logo_file = Path(logo_path).expanduser() if logo_path else None
+    use_logo = bool(logo_file and logo_file.is_file())
+    text_files = _write_scene_text_files(out_path.parent, cards)
+    filter_complex = _build_longform_overlay_filter(
+        cards=cards,
+        text_files=text_files,
+        logo_enabled=use_logo,
+        logo_position=logo_position,
+    )
+    if not filter_complex:
+        shutil.copy2(source_path, out_path)
+        return
+
+    cmd = [ffmpeg, "-y", "-i", str(source_path)]
+    if use_logo:
+        cmd.extend(["-i", str(logo_file)])
+    cmd.extend(
+        [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[vout]",
+            "-map",
+            "0:a?",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-c:a",
+            "copy",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+    )
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg long-form overlay failed: {result.stderr[-500:]}")
+
+
+def _build_longform_overlay_filter(
+    *,
+    cards: list[VisualCard],
+    text_files: list[Path],
+    logo_enabled: bool,
+    logo_position: str = "bottom-right",
+) -> str:
+    steps = ["[0:v]format=rgba[v0]"]
+    current = "v0"
+    index = 1
+    if logo_enabled:
+        steps.append(
+            "[1:v]format=rgba,colorkey=white:0.22:0.08,"
+            "scale='min(260,iw)':-1,colorchannelmixer=aa=0.92[logo]"
+        )
+        x, y = _logo_overlay_position(logo_position)
+        steps.append(f"[{current}][logo]overlay={x}:{y}:format=auto[v{index}]")
+        current = f"v{index}"
+        index += 1
+
+    for card, text_file in zip(cards, text_files):
+        start = max(0.0, float(card.start))
+        end = min(float(card.end), start + 4.0)
+        if end <= start:
+            continue
+        escaped = _escape_filter_path(text_file)
+        x_expr = f"if(lt(t,{start + 0.65:.2f}),70-(text_w+70)*(1-(t-{start:.2f})/0.65),70)"
+        draw = (
+            f"[{current}]drawtext=textfile='{escaped}':reload=0:"
+            "fontcolor=white:fontsize=48:line_spacing=10:"
+            "box=1:boxcolor=black@0.58:boxborderw=24:"
+            f"x='{x_expr}':y=70:enable='between(t,{start:.2f},{end:.2f})'[v{index}]"
+        )
+        steps.append(draw)
+        current = f"v{index}"
+        index += 1
+    steps.append(f"[{current}]format=yuv420p[vout]")
+    return ";".join(steps)
+
+
+def _write_scene_text_files(out_dir: Path, cards: list[VisualCard]) -> list[Path]:
+    text_dir = out_dir / "scene_text"
+    text_dir.mkdir(parents=True, exist_ok=True)
+    files = []
+    for card in cards:
+        headline = _scene_headline(card)
+        path = text_dir / f"card_{card.index:02d}.txt"
+        path.write_text(headline, encoding="utf-8")
+        files.append(path)
+    return files
+
+
+def _scene_headline(card: VisualCard) -> str:
+    source = card.beat or card.transcript
+    text = re.sub(r"\s+", " ", source).strip(" .:-")
+    text = re.sub(r"^(show|visualize|depict|scene|beat)\s*:?\s*", "", text, flags=re.I)
+    words = text.split()
+    if not words:
+        return "Hygaar in motion"
+    headline = " ".join(words[:8]).strip(" ,.;:")
+    if len(words) > 8:
+        headline += "..."
+    return headline[:72]
+
+
+def _logo_overlay_position(position: str) -> tuple[str, str]:
+    normalized = (position or "bottom-right").lower()
+    x = "70" if "left" in normalized else "W-w-70"
+    y = "60" if "top" in normalized else "H-h-60"
+    return x, y
+
+
+def _escape_filter_path(path: Path) -> str:
+    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
 def transcribe_audio_openai(

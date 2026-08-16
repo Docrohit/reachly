@@ -5,8 +5,11 @@ from reachly.longform_video import (
     ClipQualityReport,
     LongFormManualBrief,
     LongFormPlan,
+    VisualCard,
+    _build_longform_overlay_filter,
     _card_count,
     _retry_prompt,
+    _scene_headline,
 )
 from reachly.models import (
     BusinessProfile,
@@ -56,6 +59,45 @@ def test_longform_retry_prompt_uses_qc_issues():
     assert "hands are warped" in prompt
     assert "Correction pass 1" in prompt
     assert "no readable text" in prompt
+
+
+def test_scene_headline_uses_short_key_scene_text():
+    card = VisualCard(
+        index=1,
+        start=0,
+        end=12,
+        transcript="Hygaar catches catalogue problems before the shoot budget is wasted.",
+        beat="Show Agent 4 finding hallucinations before delivery",
+        prompt="Prompt",
+    )
+
+    assert _scene_headline(card) == "Agent 4 finding hallucinations before delivery"
+
+
+def test_longform_overlay_filter_adds_logo_and_animated_scene_text(tmp_path):
+    text_file = tmp_path / "card_01.txt"
+    text_file.write_text("Agent 4 quality control", encoding="utf-8")
+    card = VisualCard(
+        index=1,
+        start=2,
+        end=18,
+        transcript="Transcript",
+        beat="Agent 4 quality control",
+        prompt="Prompt",
+    )
+
+    vf = _build_longform_overlay_filter(
+        cards=[card],
+        text_files=[text_file],
+        logo_enabled=True,
+        logo_position="bottom-right",
+    )
+
+    assert "overlay=W-w-70:H-h-60" in vf
+    assert "colorkey=white:0.22:0.08" in vf
+    assert "drawtext=textfile=" in vf
+    assert "enable='between(t,2.00,6.00)'" in vf
+    assert "70-(text_w+70)" in vf
 
 
 def test_agent_longform_slot_publishes_only_linkedin_and_youtube(tmp_path):

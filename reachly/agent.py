@@ -341,6 +341,8 @@ class Agent:
             elevenlabs_output_format=self.settings.elevenlabs_output_format,
             openai_api_key=self.settings.openai_api_key,
             gemini_api_key=self.settings.gemini_api_key,
+            brand_logo_path=self.settings.brand_logo_path,
+            brand_logo_position=self.settings.brand_logo_position,
         )
 
     def _generate_media(self, prompt: str, *, aspect_ratio: str = "1:1") -> Optional[GeneratedMedia]:

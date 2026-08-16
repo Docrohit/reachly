@@ -266,6 +266,11 @@ class LinkedInBrowserPoster(Poster):
                         shot = save_debug_artifact(
                             page, self.data_dir, "linkedin", "media_attach_failed"
                         )
+                        if post.media.kind == "video":
+                            return self._fail(
+                                "LinkedIn video attach failed; refusing to post text-only. "
+                                f"Debug: {shot}"
+                            )
                         logger.warning(
                             "LinkedIn media attach failed; posting text only. Debug: %s",
                             shot,
@@ -287,7 +292,12 @@ class LinkedInBrowserPoster(Poster):
                 if not self._click_post(page):
                     shot = save_debug_artifact(page, self.data_dir, "linkedin", "post_button_not_found")
                     return self._fail(f"LinkedIn Post button not found. Debug: {shot}")
-                page.wait_for_timeout(4000)
+                if not self._verify_post_submitted(page, text, post.media.kind if post.media else "text"):
+                    shot = save_debug_artifact(page, self.data_dir, "linkedin", "post_not_verified")
+                    return self._fail(
+                        "LinkedIn post click was not verified on the page; video may not have posted. "
+                        f"Debug: {shot}"
+                    )
                 return self._ok()
         except Exception as e:  # noqa: BLE001
             return self._fail(f"LinkedIn browser error: {e}")
@@ -726,6 +736,38 @@ class LinkedInBrowserPoster(Poster):
                     return True
             except Exception:  # noqa: BLE001
                 continue
+        return False
+
+    def _verify_post_submitted(self, page, text: str, media_kind: str) -> bool:
+        """Confirm LinkedIn accepted the post instead of only confirming a click."""
+        expected = _text_probe(text)
+        deadline = time.time() + (75 if media_kind == "video" else 30)
+        success = re.compile(r"posted|post is live|successfully posted|view post", re.I)
+        blocking_error = re.compile(r"couldn't post|could not post|failed|try again|something went wrong", re.I)
+        while time.time() < deadline:
+            page.wait_for_timeout(2500)
+            try:
+                body = page.locator("body").inner_text(timeout=3000)
+            except Exception:  # noqa: BLE001
+                body = ""
+            normalized = _normalize_text(body)
+            if blocking_error.search(normalized):
+                return False
+            if success.search(normalized):
+                return True
+            editor = self._find_editor(page)
+            if editor is None and expected and expected in normalized:
+                return True
+            if editor is None and media_kind == "video":
+                # LinkedIn often closes the composer and processes video silently.
+                # Treat a closed composer as accepted only after giving it time to surface errors.
+                page.wait_for_timeout(5000)
+                try:
+                    body = page.locator("body").inner_text(timeout=3000)
+                except Exception:  # noqa: BLE001
+                    body = ""
+                normalized = _normalize_text(body)
+                return not blocking_error.search(normalized)
         return False
 
     def _select_post_as(self, page, name: str) -> bool:
