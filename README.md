@@ -40,6 +40,14 @@ lineage/deployment evidence log. Release steps live in
 - **Content**: rotates through your content themes daily, asks an LLM for a
   thought-leadership post (hook + body + hashtags + image prompt), and de-dupes
   against recent posts so it never repeats itself.
+- **Current context**: reads dashboard goals plus current repo docs before each
+  generation: `AGENTS.md`, `product_theory.md`, `business_goals.md`,
+  `docs/HYGAAR_MOAT_ARCHITECTURE_2026.md`, `docs/DOC_INDEX_CURRENT.md`, and
+  `Business_cases*.csv` when present. It also reads `knowledge_bank.md` release
+  events and explicit `.md`, `.csv`, `.txt`, or `.docx` docs such as a moat
+  document passed through `REACHLY_CONTEXT_DOCS`. This keeps posts and videos
+  aligned with updated Hygaar moat/feature/business-case material without a
+  service restart.
 - **Media**: generates an image per post with **Gemini ("Nano Banana")**, or with
   your **Hygaar** account (image *and* video). Bring your own keys.
 - **Long-form**: writes a full **Medium article** (title, subtitle, 850–1300 word
@@ -94,6 +102,7 @@ python -m reachly.runner seedance-account-check  # minimal ModelArk activation/b
 python -m reachly.runner linkedin --media-kind video --video-strategy recap  # LinkedIn-first Seedance video test
 python -m reachly.runner longform-video-preflight # check long-form video dependencies
 python -m reachly.runner longform-video --theme "Why Hygaar beats in-house AI media"
+python -m reachly.runner knowledge-event --kb-title "Prod update" --kb-summary "What changed and why it matters"
 python -m reachly.runner instagram            # test Instagram slot (image + post)
 python -m reachly.runner medium               # test Medium article slot (16:9 image + article)
 ```
@@ -161,6 +170,34 @@ Instagram requires generated media. If no pending post exists (e.g. LinkedIn slo
 Before the first live video run, use `seedance-account-check`. It creates minimal
 4-second ModelArk probe tasks and reports provider-side blockers such as
 `ModelNotOpen` for Seedance 2.5 activation or `AccountOverdueError` for billing.
+
+### Knowledge bank from product updates
+
+Reachly keeps an append-only `knowledge_bank.md` in its data directory. Future
+posts, articles, and long-form videos read it before generation. Use this for
+dated product facts from merged branches or production releases:
+
+```bash
+python -m reachly.runner knowledge-event \
+  --kb-title "Seedance 2.5 long-form videos shipped" \
+  --kb-summary "Reachly can now make 60-120 second narration-led 16:9 videos with ElevenLabs voiceover, transcript cards, Seedance clips, Gemini QC, and LinkedIn/YouTube publishing." \
+  --kb-source "github_actions" \
+  --kb-environment "prod" \
+  --kb-commit "$GITHUB_SHA"
+```
+
+Hosted Reachly also exposes `POST /internal/knowledge-events` when
+`REACHLY_KNOWLEDGE_EVENT_SECRET` is set. A deploy workflow can call it after
+prod is updated:
+
+```bash
+curl -X POST "https://reachly.hygaar.com/internal/knowledge-events" \
+  -H "Content-Type: application/json" \
+  -H "X-Reachly-Knowledge-Secret: $REACHLY_KNOWLEDGE_EVENT_SECRET" \
+  -d '{"source":"github_actions","environment":"prod","title":"Prod update","summary":"Summarize the user-visible features and moat impact here.","commit_sha":"'"$GITHUB_SHA"'"}'
+```
+
+The event text is treated as factual context only, not as instructions.
 
 ---
 

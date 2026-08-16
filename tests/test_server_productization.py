@@ -77,6 +77,56 @@ class ServerProductizationTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_internal_knowledge_event_endpoint_records_global_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "reachly.db"
+            media_dir = tmp_path / "media"
+            env = os.environ.copy()
+            env["REACHLY_DATABASE_URL"] = f"sqlite:///{db_path}"
+            env["REACHLY_SESSION_SECRET"] = "test-session-secret"
+            env["REACHLY_VAULT_KEY"] = "AbCdEfGhIjKlMnOpQrStUvWxYz01234567890123456="
+            env["REACHLY_MEDIA_DIR"] = str(media_dir)
+            env["REACHLY_KNOWLEDGE_EVENT_SECRET"] = "knowledge-secret"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path\n"
+                        "from fastapi.testclient import TestClient\n"
+                        "from server.app import app\n"
+                        "from server.db import init_db\n"
+                        "init_db()\n"
+                        "client=TestClient(app)\n"
+                        "payload={"
+                        "'title':'Prod release',"
+                        "'summary':'Added long-form narration-led videos for LinkedIn and YouTube.',"
+                        "'source':'github_actions',"
+                        "'environment':'prod',"
+                        "'commit_sha':'abc123',"
+                        "'files':['reachly/longform_video.py']"
+                        "}\n"
+                        "bad=client.post('/internal/knowledge-events', json=payload)\n"
+                        "assert bad.status_code == 401, bad.text\n"
+                        "ok=client.post('/internal/knowledge-events', json=payload, "
+                        "headers={'x-reachly-knowledge-secret':'knowledge-secret'})\n"
+                        "assert ok.status_code == 200, ok.text\n"
+                        f"path=Path({str(tmp_path / 'knowledge' / 'knowledge_bank.md')!r})\n"
+                        "text=path.read_text(encoding='utf-8')\n"
+                        "assert 'Prod release' in text\n"
+                        "assert 'long-form narration-led videos' in text\n"
+                        "assert 'reachly/longform_video.py' in text\n"
+                    ),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
     def test_hygaar_login_bridge_returns_tokens_and_user(self):
         from server.hygaar_auth import login_with_hygaar
 

@@ -8,6 +8,7 @@ import sys
 
 from .agent import Agent
 from .config import AgentConfig
+from .knowledge_bank import KnowledgeEvent, append_knowledge_event
 from .longform_video import LongFormManualBrief
 from .media import SeedanceClient
 from .models import Platform
@@ -205,6 +206,7 @@ def main(argv=None) -> int:
             "video-preflight",
             "longform-video",
             "longform-video-preflight",
+            "knowledge-event",
             "seedance-account-check",
             "analytics",
             "engage",
@@ -214,6 +216,7 @@ def main(argv=None) -> int:
             "video-test=one video to LinkedIn+Instagram only | video-preflight=check live video config | "
             "longform-video=one narration-led 16:9 video to LinkedIn+YouTube | "
             "longform-video-preflight=check long-form video config | "
+            "knowledge-event=append a product update to Reachly's knowledge bank | "
             "seedance-account-check=probe Seedance model activation/billing with minimal tasks | "
             "analytics=print recent performance context | run=scheduler | preview=dry-run"
         ),
@@ -252,6 +255,19 @@ def main(argv=None) -> int:
     parser.add_argument("--comments", type=int, default=None, help="analytics comments")
     parser.add_argument("--shares", type=int, default=None, help="analytics shares/reposts")
     parser.add_argument("--note", default=None, help="qualitative analytics note")
+    parser.add_argument("--kb-title", default=None, help="knowledge-event title")
+    parser.add_argument("--kb-summary", default=None, help="knowledge-event summary")
+    parser.add_argument("--kb-source", default="manual", help="knowledge-event source")
+    parser.add_argument("--kb-environment", default="", help="knowledge-event environment")
+    parser.add_argument("--kb-branch", default="", help="knowledge-event git branch")
+    parser.add_argument("--kb-commit", default="", help="knowledge-event commit SHA")
+    parser.add_argument("--kb-url", default="", help="knowledge-event URL")
+    parser.add_argument(
+        "--kb-file",
+        action="append",
+        default=[],
+        help="knowledge-event changed file; can be passed multiple times",
+    )
     args = parser.parse_args(argv)
 
     cfg = AgentConfig.from_env_file(args.env)
@@ -261,6 +277,24 @@ def main(argv=None) -> int:
         return _longform_video_preflight(cfg)
     if args.command == "seedance-account-check":
         return _seedance_account_check(cfg, duration=args.seedance_check_duration)
+    if args.command == "knowledge-event":
+        if not args.kb_title or not args.kb_summary:
+            parser.error("knowledge-event requires --kb-title and --kb-summary")
+        path = append_knowledge_event(
+            cfg.data_dir,
+            KnowledgeEvent(
+                title=args.kb_title,
+                summary=args.kb_summary,
+                source=args.kb_source,
+                environment=args.kb_environment,
+                branch=args.kb_branch,
+                commit_sha=args.kb_commit,
+                url=args.kb_url,
+                files=args.kb_file,
+            ),
+        )
+        print(f"Knowledge event recorded in {path}")
+        return 0
     if args.command == "preview":
         cfg.dry_run = True
 

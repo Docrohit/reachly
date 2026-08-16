@@ -26,6 +26,7 @@ class ServerSettings:
         # Where generated media is stored + publicly served (needed by IG API mode).
         self.media_dir = os.getenv("REACHLY_MEDIA_DIR", "./reachly_media")
         self.public_base_url = os.getenv("REACHLY_PUBLIC_BASE_URL", "http://localhost:8000")
+        self.knowledge_event_secret = os.getenv("REACHLY_KNOWLEDGE_EVENT_SECRET", "")
 
         # Hygaar account login. Reachly stays a separate app, but can use Hygaar
         # credentials as the identity provider.

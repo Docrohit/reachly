@@ -42,14 +42,26 @@ Priority order (highest wins for *direction*, lower layers add *accuracy*):
 
 ```
 1. goals.md          — written in dashboard: quarterly focus, ICP, campaigns
-2. AGENTS.md         — product constitution: what we are / are not
-3. product_theory.md — why the product exists, architecture, forbidden patterns
-4. .env BUSINESS_*   — name, vision, sector, themes, hashtags (baseline)
+2. knowledge_bank.md — dated product/release facts from CLI or deploy webhooks
+3. AGENTS.md         — product constitution: what we are / are not
+4. product_theory.md — why the product exists, architecture, forbidden patterns
+5. .env BUSINESS_*   — name, vision, sector, themes, hashtags (baseline)
 ```
 
 For **Hygaar**, repo docs live in `hdb_backend/` on the server. For other
-clients, set `REACHLY_CONTEXT_REPO` to their product repo (auto-finds the two
-markdown files).
+clients, set `REACHLY_CONTEXT_REPO` to their product repo. Reachly auto-finds
+`AGENTS.md`, `product_theory.md`, `business_goals.md`, current doc indexes,
+`docs/HYGAAR_MOAT_ARCHITECTURE_2026.md`, and `Business_cases*.csv` files when
+present. Operators can also pass explicit `.md`, `.txt`, `.csv`, or `.docx`
+strategy docs through `REACHLY_CONTEXT_DOCS`. The agent refreshes this context
+before each post/article/video generation, so updated docs and knowledge-bank
+events are picked up without restarting the scheduler.
+
+Product-update automation should append concise release facts to
+`knowledge_bank.md`, either with `python -m reachly.runner knowledge-event` in
+standalone mode or `POST /internal/knowledge-events` in hosted mode. Prefer prod
+release events over noisy branch events unless the feature is already approved
+for public positioning.
 
 ### Posting styles
 

@@ -79,7 +79,7 @@
     <label>Goals / campaign context</label>
     <textarea name="goals" placeholder="Quarterly focus, ICP, launches, campaign constraints">{{ profile.goals if profile else '' }}</textarea>
     <div class="row">
-      <div><label>Context repo path (optional)</label>
+      <div><label>Context repo path (optional: AGENTS, product theory, moat docs, business cases; release events use knowledge bank)</label>
         <input name="context_repo" value="{{ profile.context_repo if profile and profile.context_repo else '' }}"
           placeholder="/opt/customer-product or /repo/path"/></div>
       <div><label>Posting style</label>

@@ -162,6 +162,7 @@ class AgentConfig:
         self.context_repo = env.get("REACHLY_CONTEXT_REPO") or None
         self.agents_md_path = env.get("REACHLY_AGENTS_MD") or None
         self.product_theory_path = env.get("REACHLY_PRODUCT_THEORY_MD") or None
+        self.context_doc_paths = _split(env.get("REACHLY_CONTEXT_DOCS"))
         self.posting_style = env.get("REACHLY_POSTING_STYLE") or "thought_leader"
         self.dashboard_token = env.get("REACHLY_DASHBOARD_TOKEN") or None
         self.dashboard_port = int(env.get("REACHLY_DASHBOARD_PORT") or "8765")

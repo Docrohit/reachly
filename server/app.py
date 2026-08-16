@@ -30,6 +30,12 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 from starlette.middleware.sessions import SessionMiddleware
 
+from reachly.knowledge_bank import (
+    append_knowledge_event,
+    knowledge_event_from_payload,
+    validate_knowledge_event,
+)
+
 from .crypto import encrypt_dict
 from .db import (
     BusinessProfileRow,
@@ -140,6 +146,30 @@ def landing(request: Request):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.post("/internal/knowledge-events")
+async def record_knowledge_event(request: Request):
+    if not settings.knowledge_event_secret:
+        return JSONResponse({"ok": False, "message": "Knowledge events are not configured."}, status_code=404)
+    provided = request.headers.get("x-reachly-knowledge-secret", "")
+    if not secrets.compare_digest(provided, settings.knowledge_event_secret):
+        return JSONResponse({"ok": False, "message": "Unauthorized."}, status_code=401)
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "message": "Invalid JSON body."}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"ok": False, "message": "JSON body must be an object."}, status_code=400)
+
+    event = knowledge_event_from_payload(payload)
+    errors = validate_knowledge_event(event)
+    if errors:
+        return JSONResponse({"ok": False, "message": "; ".join(errors)}, status_code=400)
+
+    path = append_knowledge_event(Path(settings.media_dir).parent / "knowledge", event)
+    logger.info("Recorded Reachly knowledge event %r into %s", event.title, path)
+    return JSONResponse({"ok": True, "message": "Knowledge event recorded."})
 
 
 @app.get("/login", response_class=HTMLResponse)

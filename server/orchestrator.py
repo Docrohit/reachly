@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from sqlmodel import select
 
 from reachly.agent import Agent, AgentSettings
+from reachly.knowledge_bank import knowledge_bank_path
 from reachly.longform_video import LongFormManualBrief
 from reachly.models import (
     BusinessProfile,
@@ -68,6 +69,8 @@ def build_agent_for_user(user: User) -> Agent | None:
         platforms[platform] = _creds_from_secrets(platform, PlatformMode(row.mode), secrets)
 
     data_dir = Path(settings.media_dir).parent / "agents" / f"user_{user.id}"
+    global_knowledge_bank = knowledge_bank_path(Path(settings.media_dir).parent / "knowledge")
+    context_doc_paths = [str(global_knowledge_bank)] if global_knowledge_bank.is_file() else []
     agent_settings = AgentSettings(
         llm_provider=profile_row.llm_provider,
         gemini_api_key=providers.get("gemini_api_key"),
@@ -119,6 +122,7 @@ def build_agent_for_user(user: User) -> Agent | None:
         public_media_base_url=settings.public_media_url,
         public_media_dir=Path(settings.media_dir),
         context_repo=profile_row.context_repo,
+        context_doc_paths=context_doc_paths,
         posting_style=profile_row.posting_style,
         enable_engagement=user.enable_engagement,
         engagement_delay_minutes=user.engagement_delay_minutes,

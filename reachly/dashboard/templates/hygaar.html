@@ -38,7 +38,7 @@
 <div class="wrap">
   <header style="margin-bottom:24px">
     <h1>Reachly <span class="pill">Hygaar</span></h1>
-    <p class="muted">Goals drive posts. If empty, we read <code>AGENTS.md</code> + <code>product_theory.md</code> from your repo.</p>
+    <p class="muted">Goals drive posts. Reachly also reads <code>knowledge_bank.md</code>, current repo context, moat docs, business cases, and explicit context docs when present.</p>
     {% if request.query_params.get('saved') %}<p class="ok">Settings saved.</p>{% endif %}
   </header>
 
@@ -68,7 +68,7 @@
 
       <div class="card">
         <h2>Context repo</h2>
-        <label>Path to product repo (for AGENTS.md + product_theory.md)</label>
+        <label>Path to product repo (AGENTS, product theory, moat docs, business cases; release events use knowledge bank)</label>
         <input name="context_repo" value="{{ dash.context_repo or cfg.context_repo or '' }}" placeholder="/var/www/html/dev-env/hdb_backend"/>
         <p class="muted">Strategy source now: <strong>{{ strategy_source }}</strong></p>
       </div>

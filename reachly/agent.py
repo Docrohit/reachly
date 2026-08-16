@@ -109,6 +109,7 @@ class AgentSettings:
     context_repo: Optional[str] = None
     agents_md_path: Optional[str] = None
     product_theory_path: Optional[str] = None
+    context_doc_paths: list[str] = field(default_factory=list)
     posting_style: str = "thought_leader"
     enable_engagement: bool = False
     engagement_delay_minutes: int = 30
@@ -149,13 +150,7 @@ class Agent:
             openai_api_key=settings.openai_api_key,
             anthropic_api_key=settings.anthropic_api_key,
         )
-        self._strategy = load_strategy_context(
-            data_dir=self.settings.data_dir,
-            context_repo=settings.context_repo,
-            agents_path=settings.agents_md_path,
-            product_theory_path=settings.product_theory_path,
-            posting_style=settings.posting_style,
-        )
+        self._strategy = self._load_strategy_context()
         self._last_linkedin_post: Optional[GeneratedPost] = None
         self._last_video_error: Optional[str] = None
         logger.info("Strategy context source: %s", self._strategy.source)
@@ -218,6 +213,7 @@ class Agent:
             context_repo=repo,
             agents_md_path=cfg.agents_md_path,
             product_theory_path=cfg.product_theory_path,
+            context_doc_paths=cfg.context_doc_paths,
             posting_style=style,
             enable_engagement=cfg.enable_engagement,
             engagement_delay_minutes=cfg.engagement_delay_minutes,
@@ -230,12 +226,27 @@ class Agent:
         return cls(cfg.business, cfg.platforms, settings)
 
     # ------------------------------------------------------------------
+    def _load_strategy_context(self):
+        return load_strategy_context(
+            data_dir=self.settings.data_dir,
+            context_repo=self.settings.context_repo,
+            agents_path=self.settings.agents_md_path,
+            product_theory_path=self.settings.product_theory_path,
+            extra_doc_paths=self.settings.context_doc_paths,
+            posting_style=self.settings.posting_style,
+        )
+
+    def _refresh_strategy_context(self) -> None:
+        """Reload docs before each generation so content follows current product docs."""
+        self._strategy = self._load_strategy_context()
+
     def build_post(
         self,
         theme: Optional[str] = None,
         *,
         attach_image: Optional[bool] = None,
     ) -> GeneratedPost:
+        self._refresh_strategy_context()
         theme = theme or self._select_theme()
         logger.info("Generating post for theme: %s", theme)
         post = generate_post(
@@ -271,6 +282,7 @@ class Agent:
         return pick_theme(self.business)
 
     def build_medium_article(self, theme: Optional[str] = None) -> GeneratedPost:
+        self._refresh_strategy_context()
         theme = theme or self._select_theme()
         logger.info("Generating Medium article for theme: %s", theme)
         post = generate_medium_article(
@@ -291,6 +303,7 @@ class Agent:
         manual: Optional[LongFormManualBrief] = None,
     ) -> GeneratedPost:
         """Build a 16:9 narration-led video post from the daily post theme."""
+        self._refresh_strategy_context()
         manual = manual or LongFormManualBrief()
         source_theme = manual.topic or theme
         source_post = self.build_post(source_theme, attach_image=False)
