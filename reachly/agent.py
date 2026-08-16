@@ -806,7 +806,11 @@ class Agent:
     ) -> str:
         if media_kind and media_kind != "auto":
             return media_kind if media_kind in ("image", "video") else "image"
-        plan = [item for item in self.settings.daily_media_plan if item in ("image", "video")]
+        plan = [
+            "video" if item == "short_video" else "image"
+            for item in self.settings.daily_media_plan
+            if item in ("image", "short_video", "longform_video")
+        ]
         if plan and slot_index is not None:
             return plan[slot_index % len(plan)]
         return "image"
@@ -819,7 +823,11 @@ class Agent:
     ) -> str:
         if strategy and strategy != "auto":
             return strategy if strategy in ("recap", "fresh") else "fresh"
-        plan = [item for item in self.settings.daily_media_plan if item in ("image", "video")]
+        plan = [
+            "video" if item == "short_video" else "image"
+            for item in self.settings.daily_media_plan
+            if item in ("image", "short_video", "longform_video")
+        ]
         if plan and slot_index is not None:
             video_number = sum(1 for item in plan[: (slot_index % len(plan)) + 1] if item == "video")
             return "recap" if video_number == 1 else "fresh"
@@ -938,6 +946,7 @@ class Agent:
         theme: Optional[str] = None,
         *,
         manual: Optional[LongFormManualBrief] = None,
+        publish: bool = True,
     ) -> dict[Platform, PostResult]:
         """Generate one narration-led 16:9 video and publish to LinkedIn + YouTube."""
         with self._run_lock:
@@ -965,6 +974,12 @@ class Agent:
                 }
             if not self._has_video(post):
                 return self._video_required_results(targets)
+            if not publish:
+                media_url = post.media.public_url or post.media.local_path if post.media else None
+                return {
+                    platform: PostResult(platform=platform, ok=True, permalink=media_url)
+                    for platform in targets
+                }
             results = self._publish(post, platforms=targets)
             if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
                 self._last_linkedin_post = post

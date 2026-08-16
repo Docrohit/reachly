@@ -12,7 +12,7 @@ from .knowledge_bank import KnowledgeEvent, append_knowledge_event
 from .longform_video import LongFormManualBrief
 from .media import SeedanceClient
 from .models import Platform
-from .scheduler import run_daily
+from .scheduler import run_daily, social_times_for_media_plan
 from .settings_store import (
     instagram_times_for,
     parse_longform_video_times,
@@ -226,6 +226,11 @@ def main(argv=None) -> int:
     parser.add_argument("--longform-hook", default=None, help="manual opening hook for long-form video")
     parser.add_argument("--longform-payoff", default=None, help="manual closing payoff/CTA for long-form video")
     parser.add_argument(
+        "--longform-draft-only",
+        action="store_true",
+        help="render the long-form video but do not publish it",
+    )
+    parser.add_argument(
         "--media-kind",
         choices=["auto", "image", "video"],
         default="auto",
@@ -301,7 +306,10 @@ def main(argv=None) -> int:
     agent = Agent.from_config(cfg)
     li_times = parse_post_times(cfg.post_times_raw, cfg.data_dir)
     ig_offset = parse_instagram_offset(cfg.instagram_offset_minutes, cfg.data_dir)
-    ig_times = instagram_times_for(li_times, ig_offset)
+    ig_times = instagram_times_for(
+        social_times_for_media_plan(li_times, cfg.daily_media_plan),
+        ig_offset,
+    )
     medium_times = _parse_times(cfg.medium_times_raw)
 
     if args.command == "preview":
@@ -367,7 +375,11 @@ def main(argv=None) -> int:
             hook=args.longform_hook,
             payoff=args.longform_payoff,
         )
-        results = agent.run_longform_video_slot(theme=args.theme, manual=manual)
+        results = agent.run_longform_video_slot(
+            theme=args.theme,
+            manual=manual,
+            publish=not args.longform_draft_only,
+        )
         agent.close()
         return _results_exit_code(results)
 

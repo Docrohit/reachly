@@ -48,7 +48,7 @@ def build_agent_for_user(user: User) -> Agent | None:
     providers = decrypt_dict(profile_row.providers_vault) if profile_row.providers_vault else {}
     media_plan = _media_plan(providers.get("daily_media_plan"))
     if not media_plan and profile_row.video_provider != "none":
-        media_plan = ["image", "image", "image", "video", "video"]
+        media_plan = ["image", "image", "image", "longform_video", "short_video", "image"]
 
     business = BusinessProfile(
         name=profile_row.name,
@@ -259,6 +259,7 @@ def run_user_longform_video_slot(
     title: str | None = None,
     hook: str | None = None,
     payoff: str | None = None,
+    publish: bool = True,
 ) -> dict:
     return _run_user_slot(
         user_id,
@@ -267,6 +268,7 @@ def run_user_longform_video_slot(
         title=title,
         hook=hook,
         payoff=payoff,
+        publish=publish,
     )
 
 
@@ -279,6 +281,7 @@ def _run_user_slot(
     title: str | None = None,
     hook: str | None = None,
     payoff: str | None = None,
+    publish: bool = True,
 ) -> dict:
     with get_session() as session:
         user = session.get(User, user_id)
@@ -306,6 +309,7 @@ def _run_user_slot(
                     hook=hook,
                     payoff=payoff,
                 ),
+                publish=publish,
             )
         else:
             return {"error": f"unknown slot {slot}"}
@@ -354,13 +358,14 @@ def tick() -> None:
         users = session.exec(select(User).where(User.is_active == True)).all()  # noqa: E712
 
     for user in users:
+        daily_media_plan = _daily_media_plan_for_user(user.id)
         try:
             tz = ZoneInfo(user.timezone or "UTC")
         except Exception:  # noqa: BLE001
             tz = ZoneInfo("UTC")
         now = datetime.now(tz)
         now_hm = now.strftime("%H:%M")
-        for action in scheduled_actions_for_user(user, now_hm):
+        for action in scheduled_actions_for_user(user, now_hm, daily_media_plan=daily_media_plan):
             logger.info("Reachly %s slot reached for user %s.", action, user.id)
             try:
                 if action == "linkedin":
@@ -378,16 +383,22 @@ def tick() -> None:
                 logger.exception("%s run failed for user %s", action, user.id)
 
 
-def scheduled_actions_for_user(user: User, now_hm: str) -> list[str]:
+def scheduled_actions_for_user(
+    user: User,
+    now_hm: str,
+    *,
+    daily_media_plan: list[str] | None = None,
+) -> list[str]:
     linkedin_times = _parse_times(user.post_times or user.post_time or "09:30")
     medium_times = _parse_times(user.medium_times or "")
     instagram_times = instagram_times_for(
-        linkedin_times,
+        _social_times_for_media_plan(linkedin_times, daily_media_plan or []),
         int(user.instagram_offset_minutes or 0),
     )
     actions = []
     if now_hm in linkedin_times:
-        actions.append("linkedin")
+        slot_index = _slot_index_for_time(user.post_times or user.post_time, now_hm)
+        actions.append(_scheduled_post_action(daily_media_plan or [], slot_index))
     if now_hm in instagram_times:
         actions.append("instagram")
     if now_hm in medium_times:
@@ -423,8 +434,58 @@ def _slot_index_for_time(value: str, now_hm: str) -> int | None:
 
 
 def _media_plan(value: str | None) -> list[str]:
-    allowed = {"image", "video"}
-    return [item for item in (raw.strip().lower() for raw in (value or "").split(",")) if item in allowed]
+    aliases = {
+        "image": "image",
+        "longform": "longform_video",
+        "longform_video": "longform_video",
+        "long-form": "longform_video",
+        "long-form-video": "longform_video",
+        "video": "short_video",
+        "vertical": "short_video",
+        "vertical_video": "short_video",
+        "vertical-video": "short_video",
+        "short_video": "short_video",
+        "short-video": "short_video",
+    }
+    plan = [
+        aliases[item]
+        for item in (raw.strip().lower() for raw in (value or "").split(","))
+        if item in aliases
+    ]
+    if plan == ["image", "image", "image", "short_video", "short_video"]:
+        return ["image", "image", "image", "longform_video", "short_video", "image"]
+    return plan
+
+
+def _daily_media_plan_for_user(user_id: int) -> list[str]:
+    with get_session() as session:
+        profile = session.exec(
+            select(BusinessProfileRow).where(BusinessProfileRow.user_id == user_id)
+        ).first()
+    if not profile:
+        return []
+    providers = decrypt_dict(profile.providers_vault) if profile.providers_vault else {}
+    media_plan = _media_plan(providers.get("daily_media_plan"))
+    if not media_plan and profile.video_provider != "none":
+        return ["image", "image", "image", "longform_video", "short_video", "image"]
+    return media_plan
+
+
+def _social_times_for_media_plan(times: list[str], media_plan: list[str]) -> list[str]:
+    return [
+        time
+        for index, time in enumerate(times)
+        if _scheduled_post_action(media_plan, index) == "linkedin"
+    ]
+
+
+def _scheduled_post_action(media_plan: list[str], slot_index: int | None) -> str:
+    if not media_plan or slot_index is None:
+        return "linkedin"
+    item = media_plan[slot_index % len(media_plan)]
+    if item == "longform_video":
+        return "longform_video"
+    return "linkedin"
 
 
 def _as_int(value, default: int) -> int:

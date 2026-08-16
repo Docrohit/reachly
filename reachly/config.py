@@ -40,8 +40,23 @@ def _int(value: Optional[str], default: int) -> int:
 
 
 def _media_plan(value: Optional[str]) -> list[str]:
-    allowed = {"image", "video"}
-    return [item for item in (v.lower() for v in _split(value)) if item in allowed]
+    aliases = {
+        "image": "image",
+        "longform": "longform_video",
+        "longform_video": "longform_video",
+        "long-form": "longform_video",
+        "long-form-video": "longform_video",
+        "video": "short_video",
+        "vertical": "short_video",
+        "vertical_video": "short_video",
+        "vertical-video": "short_video",
+        "short_video": "short_video",
+        "short-video": "short_video",
+    }
+    plan = [aliases[item] for item in (v.lower() for v in _split(value)) if item in aliases]
+    if plan == ["image", "image", "image", "short_video", "short_video"]:
+        return ["image", "image", "image", "longform_video", "short_video", "image"]
+    return plan
 
 
 def _hashtags(value: Optional[str]) -> list[str]:
@@ -144,7 +159,14 @@ class AgentConfig:
         )
         self.daily_media_plan = _media_plan(env.get("REACHLY_DAILY_MEDIA_PLAN"))
         if not self.daily_media_plan and self.video_provider != "none":
-            self.daily_media_plan = ["image", "image", "image", "video", "video"]
+            self.daily_media_plan = [
+                "image",
+                "image",
+                "image",
+                "longform_video",
+                "short_video",
+                "image",
+            ]
         self.brand_logo_path = env.get("BRAND_LOGO_PATH") or None
         self.brand_logo_position = env.get("BRAND_LOGO_POSITION") or "bottom-right"
 

@@ -134,7 +134,7 @@ class MediaBrandingTests(unittest.TestCase):
                 AgentSettings(
                     data_dir=tmp,
                     dry_run=True,
-                    daily_media_plan=["image", "video"],
+                    daily_media_plan=["image", "short_video"],
                     video_provider="seedance",
                     seedance_api_key="seedance-key",
                 ),
@@ -221,7 +221,14 @@ class MediaBrandingTests(unittest.TestCase):
                 AgentSettings(
                     data_dir=tmp,
                     dry_run=True,
-                    daily_media_plan=["image", "image", "image", "video", "video"],
+                    daily_media_plan=[
+                        "image",
+                        "image",
+                        "image",
+                        "longform_video",
+                        "short_video",
+                        "image",
+                    ],
                     video_provider="seedance",
                     seedance_api_key="seedance-key",
                 ),
@@ -236,7 +243,7 @@ class MediaBrandingTests(unittest.TestCase):
                     results = agent.run_linkedin_slot(slot_index=4)
 
             self.assertTrue(results[Platform.linkedin].ok)
-            self.assertEqual(ensure_video.call_args.kwargs["strategy"], "fresh")
+            self.assertEqual(ensure_video.call_args.kwargs["strategy"], "recap")
             agent.close()
 
     def test_recap_video_context_uses_logo_and_recent_image_post_references(self):

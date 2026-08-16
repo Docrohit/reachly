@@ -172,14 +172,40 @@ def test_seedance_client_retries_without_audio_on_audio_policy_error(tmp_path):
     assert generate.call_args_list[1].kwargs["generate_audio"] is False
 
 
-def test_seedance_config_enables_three_image_two_video_plan_by_default():
+def test_seedance_config_enables_six_slot_longform_vertical_plan_by_default():
     cfg = AgentConfig({"VIDEO_PROVIDER": "seedance", "SEEDANCE_API_KEY": "seedance-key"})
 
     assert cfg.video_provider == "seedance"
     assert cfg.seedance_model == "seedance_2_5"
     assert cfg.seedance_fallback_model == "seedance_2_0"
     assert cfg.seedance_clip_count == 0
-    assert cfg.daily_media_plan == ["image", "image", "image", "video", "video"]
+    assert cfg.daily_media_plan == [
+        "image",
+        "image",
+        "image",
+        "longform_video",
+        "short_video",
+        "image",
+    ]
+
+
+def test_seedance_config_migrates_old_two_video_plan_to_longform_vertical_plan():
+    cfg = AgentConfig(
+        {
+            "VIDEO_PROVIDER": "seedance",
+            "SEEDANCE_API_KEY": "seedance-key",
+            "REACHLY_DAILY_MEDIA_PLAN": "image,image,image,video,video",
+        }
+    )
+
+    assert cfg.daily_media_plan == [
+        "image",
+        "image",
+        "image",
+        "longform_video",
+        "short_video",
+        "image",
+    ]
 
 
 def test_seedance_config_accepts_agent8_modelark_key_aliases():

@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
         request: Request,
         goals: str = Form(""),
         posting_style: str = Form("thought_leader"),
-        post_times: str = Form("09:00,12:00,15:00,18:00,21:00"),
+        post_times: str = Form("09:00,11:30,14:00,16:30,19:00,21:30"),
         instagram_offset_minutes: int = Form(5),
         longform_video_times: str = Form("11:30,17:30"),
         context_repo: str = Form(""),
@@ -174,6 +174,7 @@ def create_app() -> FastAPI:
         title: str = Form(""),
         hook: str = Form(""),
         payoff: str = Form(""),
+        publish: str = Form("on"),
     ):
         if not _auth_ok(request, cfg):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -189,6 +190,7 @@ def create_app() -> FastAPI:
                         hook=hook.strip() or None,
                         payoff=payoff.strip() or None,
                     ),
+                    publish=publish == "on",
                 )
                 agent.close()
             except Exception:  # noqa: BLE001

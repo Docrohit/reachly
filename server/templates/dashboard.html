@@ -16,10 +16,10 @@
   <h2>Posting schedule</h2>
   <form method="post" action="/dashboard/settings">
     <div class="row">
-      <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,12:00,15:00,18:00,21:00"/></div>
+      <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,11:30,14:00,16:30,19:00,21:30"/></div>
       <div><label>Instagram offset minutes</label><input name="instagram_offset_minutes" type="number" min="0" max="240" value="{{ user.instagram_offset_minutes }}"/></div>
       <div><label>Medium article slots</label><input name="medium_times" value="{{ user.medium_times }}" placeholder="09:30,14:30,19:30"/></div>
-      <div><label>Long-form video slots</label><input name="longform_video_times" value="{{ user.longform_video_times }}" placeholder="11:30,17:30"/></div>
+      <div><label>Extra long-form video slots</label><input name="longform_video_times" value="{{ user.longform_video_times }}" placeholder="11:30,17:30"/></div>
       <div><label>Timezone (IANA)</label><input name="timezone" value="{{ user.timezone }}"/></div>
     </div>
     <input type="hidden" name="post_time" value="{{ user.post_time }}"/>
@@ -60,6 +60,9 @@
   </div>
   <label>Hook override</label><input id="lfHook" placeholder="Optional opening hook"/>
   <label>Payoff override</label><input id="lfPayoff" placeholder="Optional closing payoff / CTA"/>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:10px">
+    <input id="lfPublish" type="checkbox" checked/> Publish after render
+  </label>
   <button class="btn primary" style="margin-top:12px" onclick="runLongformVideo()">Run long-form video</button>
   <span id="longformMsg" class="muted"></span>
 </div>
@@ -160,7 +163,7 @@
         </select></div>
     </div>
     <div class="row">
-      <div><label>Daily media plan</label><input name="daily_media_plan" placeholder="image,image,image,video,video"/></div>
+      <div><label>Daily media plan</label><input name="daily_media_plan" placeholder="image,image,image,longform_video,vertical,image"/></div>
       <div><label>Video ratio</label><input name="seedance_ratio" placeholder="9:16"/></div>
       <div><label>Target seconds</label><input name="seedance_target_duration" placeholder="30"/></div>
       <div><label>Clip count</label><input name="seedance_clip_count" placeholder="2"/></div>
@@ -337,6 +340,7 @@ async function runLongformVideo(){
   fd.append('title', document.getElementById('lfTitle').value);
   fd.append('hook', document.getElementById('lfHook').value);
   fd.append('payoff', document.getElementById('lfPayoff').value);
+  if (document.getElementById('lfPublish').checked) fd.append('publish', 'on');
   const r = await fetch('/dashboard/run-longform-video',{method:'POST', body:fd});
   const j = await r.json();
   msg.textContent = ' ' + JSON.stringify(j);

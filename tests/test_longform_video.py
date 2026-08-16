@@ -101,3 +101,40 @@ def test_agent_longform_slot_publishes_only_linkedin_and_youtube(tmp_path):
     assert set(results) == {Platform.linkedin, Platform.youtube}
     assert publish.call_args.kwargs["platforms"] == [Platform.linkedin, Platform.youtube]
     agent.close()
+
+
+def test_agent_longform_slot_can_render_draft_without_publishing(tmp_path):
+    agent = Agent(
+        BusinessProfile(name="Hygaar"),
+        {
+            Platform.linkedin: PlatformCredentials(
+                platform=Platform.linkedin,
+                mode=PlatformMode.api,
+                api_token="linkedin-token",
+            ),
+            Platform.youtube: PlatformCredentials(
+                platform=Platform.youtube,
+                mode=PlatformMode.api,
+                api_token="youtube-token",
+            ),
+        },
+        AgentSettings(data_dir=tmp_path, dry_run=False),
+    )
+    video = tmp_path / "draft.mp4"
+    video.write_bytes(b"video")
+    post = GeneratedPost(
+        theme="agent 4",
+        hook="Agent 4 catches hallucinations",
+        body="Body",
+        media=GeneratedMedia(kind="video", local_path=str(video), public_url="https://cdn.example/draft.mp4"),
+    )
+
+    with patch.object(agent, "build_longform_video", return_value=post):
+        with patch.object(agent, "_publish") as publish:
+            results = agent.run_longform_video_slot(publish=False)
+
+    assert set(results) == {Platform.linkedin, Platform.youtube}
+    assert all(result.ok for result in results.values())
+    assert results[Platform.linkedin].permalink == "https://cdn.example/draft.mp4"
+    publish.assert_not_called()
+    agent.close()

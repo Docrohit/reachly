@@ -29,9 +29,13 @@ def run_daily(
         h, m = (int(x) for x in pt.strip().split(":"))
 
         def _li_job(hour=h, minute=m, slot=pt, index=slot_index):
-            logger.info("LinkedIn trigger at %s (%s).", slot, timezone)
+            action = _scheduled_post_action(agent.settings.daily_media_plan, index)
+            logger.info("Reachly %s trigger at %s (%s).", action, slot, timezone)
             try:
-                results = agent.run_linkedin_slot(slot_index=index)
+                if action == "longform_video":
+                    results = agent.run_longform_video_slot()
+                else:
+                    results = agent.run_linkedin_slot(slot_index=index)
                 if (
                     agent.settings.enable_engagement
                     and results.get(Platform.linkedin)
@@ -47,9 +51,9 @@ def run_daily(
                         timezone,
                     )
             except Exception as e:  # noqa: BLE001
-                message = f"LinkedIn run failed at {slot}: {e}"
+                message = f"{action} run failed at {slot}: {e}"
                 logger.exception(message)
-                agent.history.record_event(platform="linkedin", ok=False, error=message)
+                agent.history.record_event(platform=action, ok=False, error=message)
 
         sched.add_job(
             _li_job,
@@ -154,3 +158,21 @@ def run_daily(
         sched.start()
     except (KeyboardInterrupt, SystemExit):
         agent.close()
+
+
+def social_times_for_media_plan(times: list[str], media_plan: list[str]) -> list[str]:
+    """Return post times that should create pending content for Instagram."""
+    return [
+        time
+        for index, time in enumerate(times)
+        if _scheduled_post_action(media_plan, index) == "linkedin"
+    ]
+
+
+def _scheduled_post_action(media_plan: list[str], slot_index: int | None) -> str:
+    if not media_plan or slot_index is None:
+        return "linkedin"
+    item = media_plan[slot_index % len(media_plan)]
+    if item == "longform_video":
+        return "longform_video"
+    return "linkedin"

@@ -528,7 +528,7 @@ def save_platform(
 def save_settings(
     request: Request,
     post_time: str = Form("09:30"),
-    post_times: str = Form("09:00,12:00,15:00,18:00,21:00"),
+    post_times: str = Form("09:00,11:30,14:00,16:30,19:00,21:30"),
     instagram_offset_minutes: int = Form(5),
     medium_times: str = Form("09:30,14:30,19:30"),
     longform_video_enabled: str = Form("off"),
@@ -598,6 +598,7 @@ def run_longform_video(
     title: str = Form(""),
     hook: str = Form(""),
     payoff: str = Form(""),
+    publish: str = Form("on"),
 ):
     user = require_user(request)
     if not user:
@@ -608,6 +609,7 @@ def run_longform_video(
         "title": title.strip() or None,
         "hook": hook.strip() or None,
         "payoff": payoff.strip() or None,
+        "publish": publish == "on",
     }
 
     def _job() -> None:

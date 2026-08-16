@@ -326,15 +326,44 @@ class ServerProductizationTests(unittest.TestCase):
 
         user = User(
             telegram_chat_id="42",
-            post_times="09:00,13:30,21:00",
+            post_times="09:00,11:30,14:00,16:30,19:00,21:30",
             instagram_offset_minutes=5,
             medium_times="09:30,14:30,19:30",
         )
+        media_plan = [
+            "image",
+            "image",
+            "image",
+            "longform_video",
+            "short_video",
+            "image",
+        ]
 
-        self.assertEqual(scheduled_actions_for_user(user, "09:00"), ["linkedin"])
-        self.assertEqual(scheduled_actions_for_user(user, "09:05"), ["instagram"])
+        self.assertEqual(
+            scheduled_actions_for_user(user, "09:00", daily_media_plan=media_plan),
+            ["linkedin"],
+        )
+        self.assertEqual(
+            scheduled_actions_for_user(user, "09:05", daily_media_plan=media_plan),
+            ["instagram"],
+        )
         self.assertEqual(scheduled_actions_for_user(user, "09:30"), ["medium"])
-        self.assertEqual(scheduled_actions_for_user(user, "13:35"), ["instagram"])
+        self.assertEqual(
+            scheduled_actions_for_user(user, "16:30", daily_media_plan=media_plan),
+            ["longform_video"],
+        )
+        self.assertEqual(
+            scheduled_actions_for_user(user, "16:35", daily_media_plan=media_plan),
+            [],
+        )
+        self.assertEqual(
+            scheduled_actions_for_user(user, "19:00", daily_media_plan=media_plan),
+            ["linkedin"],
+        )
+        self.assertEqual(
+            scheduled_actions_for_user(user, "19:05", daily_media_plan=media_plan),
+            ["instagram"],
+        )
         self.assertEqual(scheduled_actions_for_user(user, "22:00"), [])
 
     def test_saas_orchestrator_maps_linkedin_organization_id(self):
