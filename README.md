@@ -147,7 +147,8 @@ YOUTUBE_CLIENT_SECRET="..."
 
 YouTube uploads require OAuth scope
 `https://www.googleapis.com/auth/youtube.upload`; API keys and service accounts
-are not enough for uploading to the Hygaar channel.
+are not enough for uploading to the Hygaar channel. Reachly marks API uploads
+as `selfDeclaredMadeForKids=false` and `containsSyntheticMedia=true`.
 
 With the defaults above (Asia/Kolkata):
 

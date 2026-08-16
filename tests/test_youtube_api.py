@@ -85,6 +85,7 @@ def test_youtube_upload_uses_resumable_video_insert_metadata():
     assert session["params"]["uploadType"] == "resumable"
     assert session["params"]["part"] == "snippet,status"
     assert session["json"]["status"]["privacyStatus"] == "unlisted"
+    assert session["json"]["status"]["selfDeclaredMadeForKids"] is False
     assert session["json"]["status"]["containsSyntheticMedia"] is True
     assert session["json"]["snippet"]["categoryId"] == "28"
     assert "Hygaar" in session["json"]["snippet"]["tags"]

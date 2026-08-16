@@ -90,6 +90,7 @@ class YouTubeApiPoster(Poster):
             },
             "status": {
                 "privacyStatus": _privacy_status(self.creds.extra.get("privacy_status")),
+                "selfDeclaredMadeForKids": False,
                 "containsSyntheticMedia": True,
             },
         }
