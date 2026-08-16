@@ -24,6 +24,7 @@ class Platform(str, Enum):
     linkedin = "linkedin"
     instagram = "instagram"
     medium = "medium"
+    youtube = "youtube"
 
 
 class BusinessProfile(BaseModel):
@@ -105,6 +106,13 @@ class GeneratedPost(BaseModel):
             parts = [self.hook.strip(), "", self.body.strip()]
             if link:
                 parts += ["", link]
+            return "\n".join(parts).strip()
+        if platform == Platform.youtube:
+            parts = [self.hook.strip(), "", self.body.strip()]
+            if link:
+                parts += ["", link]
+            if tags:
+                parts += ["", tags]
             return "\n".join(parts).strip()
         # LinkedIn / Instagram: full body.
         parts = [self.hook.strip(), "", self.body.strip()]

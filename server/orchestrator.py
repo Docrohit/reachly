@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from sqlmodel import select
 
 from reachly.agent import Agent, AgentSettings
+from reachly.longform_video import LongFormManualBrief
 from reachly.models import (
     BusinessProfile,
     Platform,
@@ -90,6 +91,25 @@ def build_agent_for_user(user: User) -> Agent | None:
         seedance_clip_duration=_as_int(providers.get("seedance_clip_duration"), 15),
         seedance_generate_audio=_as_bool(providers.get("seedance_generate_audio"), True),
         seedance_watermark=_as_bool(providers.get("seedance_watermark"), False),
+        longform_video_enabled=user.longform_video_enabled,
+        longform_video_target_seconds=_as_int(providers.get("longform_video_target_seconds"), 90),
+        longform_video_card_seconds=_as_int(providers.get("longform_video_card_seconds"), 18),
+        longform_video_max_card_retries=_as_int(providers.get("longform_video_max_card_retries"), 2),
+        longform_video_title_alignment_threshold=_as_int(
+            providers.get("longform_video_title_alignment_threshold"),
+            7,
+        ),
+        longform_video_qc_enabled=_as_bool(providers.get("longform_video_qc_enabled"), True),
+        longform_video_qc_model=providers.get("longform_video_qc_model", "gemini-2.5-flash"),
+        openai_transcription_model=providers.get("openai_transcription_model", "gpt-4o-transcribe"),
+        openai_transcription_fallback_model=providers.get(
+            "openai_transcription_fallback_model",
+            "whisper-1",
+        ),
+        elevenlabs_api_key=providers.get("elevenlabs_api_key"),
+        elevenlabs_voice_id=providers.get("elevenlabs_voice_id", "JBFqnCBsd6RMkjVDRZzb"),
+        elevenlabs_model=providers.get("elevenlabs_model", "eleven_v3"),
+        elevenlabs_output_format=providers.get("elevenlabs_output_format", "mp3_44100_128"),
         daily_media_plan=media_plan,
         brand_logo_path=providers.get("brand_logo_path"),
         brand_logo_position=providers.get("brand_logo_position", "bottom-right"),
@@ -174,6 +194,22 @@ def _creds_from_secrets(platform: Platform, mode: PlatformMode, s: dict) -> Plat
             username=s.get("email"),
             password=s.get("password"),
         )
+    if platform == Platform.youtube:
+        return PlatformCredentials(
+            platform=platform,
+            mode=mode,
+            api_token=s.get("access_token"),
+            extra={
+                "refresh_token": s.get("refresh_token", ""),
+                "client_id": s.get("client_id", ""),
+                "client_secret": s.get("client_secret", ""),
+                "token_uri": s.get("token_uri", "https://oauth2.googleapis.com/token"),
+                "privacy_status": s.get("privacy_status", "private"),
+                "category_id": s.get("category_id", "22"),
+                "notify_subscribers": s.get("notify_subscribers", "false"),
+                "default_tags": s.get("default_tags", ""),
+            },
+        )
     raise ValueError(platform)
 
 
@@ -212,7 +248,34 @@ def run_user_medium_slot(user_id: int) -> dict:
     return _run_user_slot(user_id, "medium")
 
 
-def _run_user_slot(user_id: int, slot: str, *, slot_index: int | None = None) -> dict:
+def run_user_longform_video_slot(
+    user_id: int,
+    *,
+    theme: str | None = None,
+    title: str | None = None,
+    hook: str | None = None,
+    payoff: str | None = None,
+) -> dict:
+    return _run_user_slot(
+        user_id,
+        "longform_video",
+        theme=theme,
+        title=title,
+        hook=hook,
+        payoff=payoff,
+    )
+
+
+def _run_user_slot(
+    user_id: int,
+    slot: str,
+    *,
+    slot_index: int | None = None,
+    theme: str | None = None,
+    title: str | None = None,
+    hook: str | None = None,
+    payoff: str | None = None,
+) -> dict:
     with get_session() as session:
         user = session.get(User, user_id)
     if not user or not user.is_active:
@@ -230,6 +293,16 @@ def _run_user_slot(user_id: int, slot: str, *, slot_index: int | None = None) ->
             results = agent.run_instagram_slot()
         elif slot == "medium":
             results = agent.run_medium_slot()
+        elif slot == "longform_video":
+            results = agent.run_longform_video_slot(
+                theme=theme,
+                manual=LongFormManualBrief(
+                    topic=theme,
+                    title=title,
+                    hook=hook,
+                    payoff=payoff,
+                ),
+            )
         else:
             return {"error": f"unknown slot {slot}"}
     finally:
@@ -295,6 +368,8 @@ def tick() -> None:
                     run_user_instagram_slot(user.id)
                 elif action == "medium":
                     run_user_medium_slot(user.id)
+                elif action == "longform_video":
+                    run_user_longform_video_slot(user.id)
             except Exception:  # noqa: BLE001
                 logger.exception("%s run failed for user %s", action, user.id)
 
@@ -313,6 +388,8 @@ def scheduled_actions_for_user(user: User, now_hm: str) -> list[str]:
         actions.append("instagram")
     if now_hm in medium_times:
         actions.append("medium")
+    if user.longform_video_enabled and now_hm in _parse_times(user.longform_video_times or ""):
+        actions.append("longform_video")
     return actions
 
 

@@ -315,6 +315,40 @@ def add_elevenlabs_voiceover(
     )
 
 
+def generate_elevenlabs_speech(
+    script: str,
+    *,
+    api_key: str,
+    out_dir: Path,
+    voice_id: str = "JBFqnCBsd6RMkjVDRZzb",
+    model_id: str = "eleven_v3",
+    output_format: str = "mp3_44100_128",
+) -> Path:
+    """Generate standalone ElevenLabs narration audio."""
+    if not api_key:
+        raise ValueError("ElevenLabs API key is required for narration.")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = out_dir / f"narration_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp3"
+
+    resp = requests.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+        params={"output_format": output_format},
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+        },
+        json={
+            "text": script[:5000],
+            "model_id": model_id,
+        },
+        timeout=180,
+    )
+    if resp.status_code >= 300:
+        raise RuntimeError(f"ElevenLabs TTS failed ({resp.status_code}): {resp.text[:300]}")
+    audio_path.write_bytes(resp.content)
+    return audio_path
+
+
 def _mux_audio_into_video(
     media: GeneratedMedia,
     audio_path: Path,
@@ -358,6 +392,65 @@ def _mux_audio_into_video(
     return GeneratedMedia(
         kind="video",
         local_path=str(voiced_path),
+        public_url=None,
+        mime_type="video/mp4",
+        prompt=prompt,
+    )
+
+
+def mux_narration_video(
+    video_path: Path,
+    audio_path: Path,
+    out_path: Path,
+    *,
+    duration: float,
+    prompt: str | None = None,
+) -> GeneratedMedia:
+    """Mux narration into a video, making the narration duration authoritative."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for long-form video rendering.")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-stream_loop",
+        "-1",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-t",
+        f"{max(1.0, duration):.3f}",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ar",
+        "44100",
+        "-pix_fmt",
+        "yuv420p",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg narration mux failed: {result.stderr[-500:]}")
+    return GeneratedMedia(
+        kind="video",
+        local_path=str(out_path),
         public_url=None,
         mime_type="video/mp4",
         prompt=prompt,

@@ -72,7 +72,7 @@ class MediaBrandingTests(unittest.TestCase):
             always.close()
             never.close()
 
-    def test_video_media_is_kept_for_linkedin_and_instagram_only(self):
+    def test_video_media_is_kept_for_video_platforms(self):
         with tempfile.TemporaryDirectory() as tmp:
             post = GeneratedPost(
                 theme="catalog ops",
@@ -88,6 +88,7 @@ class MediaBrandingTests(unittest.TestCase):
 
             self.assertIsNotNone(agent._post_for_platform(post, Platform.linkedin).media)
             self.assertIsNotNone(agent._post_for_platform(post, Platform.instagram).media)
+            self.assertIsNotNone(agent._post_for_platform(post, Platform.youtube).media)
             self.assertIsNone(agent._post_for_platform(post, Platform.twitter).media)
             agent.close()
 

@@ -103,6 +103,23 @@ class AgentConfig:
         self.seedance_clip_duration = _int(env.get("SEEDANCE_CLIP_DURATION"), 15)
         self.seedance_generate_audio = _bool(env.get("SEEDANCE_GENERATE_AUDIO"), True)
         self.seedance_watermark = _bool(env.get("SEEDANCE_WATERMARK"), False)
+        self.longform_video_enabled = _bool(env.get("REACHLY_LONGFORM_VIDEO_ENABLED"), False)
+        self.longform_video_times_raw = env.get("REACHLY_LONGFORM_VIDEO_TIMES") or ""
+        self.longform_video_target_seconds = _int(env.get("REACHLY_LONGFORM_VIDEO_TARGET_SECONDS"), 90)
+        self.longform_video_card_seconds = _int(env.get("REACHLY_LONGFORM_VIDEO_CARD_SECONDS"), 18)
+        self.longform_video_max_card_retries = _int(env.get("REACHLY_LONGFORM_VIDEO_MAX_CARD_RETRIES"), 2)
+        self.longform_video_title_alignment_threshold = _int(
+            env.get("REACHLY_LONGFORM_VIDEO_TITLE_ALIGNMENT_THRESHOLD"),
+            7,
+        )
+        self.longform_video_qc_enabled = _bool(env.get("REACHLY_LONGFORM_VIDEO_QC"), True)
+        self.longform_video_qc_model = env.get("REACHLY_LONGFORM_VIDEO_QC_MODEL") or "gemini-2.5-flash"
+        self.openai_transcription_model = (
+            env.get("REACHLY_OPENAI_TRANSCRIPTION_MODEL") or "gpt-4o-transcribe"
+        )
+        self.openai_transcription_fallback_model = (
+            env.get("REACHLY_OPENAI_TRANSCRIPTION_FALLBACK_MODEL") or "whisper-1"
+        )
         self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), True)
         self.video_voiceover_provider = (
             env.get("REACHLY_VIDEO_VOICEOVER_PROVIDER") or "elevenlabs"
@@ -224,6 +241,21 @@ class AgentConfig:
             },
             username=env.get("MEDIUM_EMAIL") or None,
             password=env.get("MEDIUM_PASSWORD") or None,
+        )
+        out[Platform.youtube] = PlatformCredentials(
+            platform=Platform.youtube,
+            mode=PlatformMode(env.get("YOUTUBE_MODE", "off")),
+            api_token=env.get("YOUTUBE_ACCESS_TOKEN") or None,
+            extra={
+                "refresh_token": env.get("YOUTUBE_REFRESH_TOKEN", ""),
+                "client_id": env.get("YOUTUBE_CLIENT_ID", ""),
+                "client_secret": env.get("YOUTUBE_CLIENT_SECRET", ""),
+                "token_uri": env.get("YOUTUBE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+                "privacy_status": env.get("YOUTUBE_PRIVACY_STATUS", "private"),
+                "category_id": env.get("YOUTUBE_CATEGORY_ID", "22"),
+                "notify_subscribers": env.get("YOUTUBE_NOTIFY_SUBSCRIBERS", "false"),
+                "default_tags": env.get("YOUTUBE_DEFAULT_TAGS", ""),
+            },
         )
         return out
 

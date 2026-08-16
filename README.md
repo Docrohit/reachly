@@ -2,10 +2,11 @@
 
 **Your AI thought-leadership autopilot.** Reachly studies a business — its vision,
 sector, product and brand voice — then **writes and publishes on-brand content every
-day** to **LinkedIn, X (Twitter), Instagram, and Medium**, complete with AI-generated
+day** to **LinkedIn, X (Twitter), Instagram, Medium, and YouTube**, complete with AI-generated
 images, relevant hashtags, and links back to the business. Short social posts go to
 LinkedIn / X / Instagram; long-form **Medium articles** (850–1300 words) run on their
-own daily schedule.
+own daily schedule. Reachly can also make narration-led 16:9 videos for
+LinkedIn + YouTube.
 
 It ships in two shapes from one codebase:
 
@@ -43,6 +44,11 @@ lineage/deployment evidence log. Release steps live in
   your **Hygaar** account (image *and* video). Bring your own keys.
 - **Long-form**: writes a full **Medium article** (title, subtitle, 850–1300 word
   body, tags) with a **16:9 image**, de-duped against recent article openings.
+- **Narration-led video**: creates 60-120s 16:9 videos from the daily post theme
+  or a manual topic/title/hook/payoff. It writes the script, generates ElevenLabs
+  narration, transcribes with OpenAI, groups the transcript into 4-6 visual cards,
+  generates silent Seedance clips, runs Gemini visual QC, retries bad cards up to
+  two times, renders the final narration-led video, then posts to LinkedIn + YouTube.
 - **Publishing**: posts via the **official APIs** *or* a **headless browser**
   (Playwright) when you don't have API access — chosen **per platform**. Medium
   publishes via browser (persistent session), as a **draft** or **public** article.
@@ -86,6 +92,8 @@ python -m reachly.runner run                  # scheduler: LinkedIn + Instagram 
 python -m reachly.runner once                 # all enabled platforms, one shot
 python -m reachly.runner seedance-account-check  # minimal ModelArk activation/billing probe
 python -m reachly.runner linkedin --media-kind video --video-strategy recap  # LinkedIn-first Seedance video test
+python -m reachly.runner longform-video-preflight # check long-form video dependencies
+python -m reachly.runner longform-video --theme "Why Hygaar beats in-house AI media"
 python -m reachly.runner instagram            # test Instagram slot (image + post)
 python -m reachly.runner medium               # test Medium article slot (16:9 image + article)
 ```
@@ -112,6 +120,25 @@ SEEDANCE_API_KEY="..."  # or ARK_API_KEY / MODELARK_API_KEY from the Agent 8 env
 SEEDANCE_CLIP_COUNT="0" # auto: 2.5 uses native 30s, 2.0 fallback splits into 15s clips
 REACHLY_DAILY_MEDIA_PLAN="image,image,image,video,video"
 ```
+
+For the narration-led long-form maker, also set:
+
+```env
+REACHLY_LONGFORM_VIDEO_ENABLED="yes"
+REACHLY_LONGFORM_VIDEO_TIMES="11:30,17:30"
+ELEVENLABS_API_KEY="..."
+REACHLY_ELEVENLABS_VOICE_ID="..."
+OPENAI_API_KEY="..."      # gpt-4o-transcribe, then whisper fallback
+GEMINI_API_KEY="..."      # clip hallucination QC
+YOUTUBE_MODE="api"
+YOUTUBE_REFRESH_TOKEN="..."
+YOUTUBE_CLIENT_ID="..."
+YOUTUBE_CLIENT_SECRET="..."
+```
+
+YouTube uploads require OAuth scope
+`https://www.googleapis.com/auth/youtube.upload`; API keys and service accounts
+are not enough for uploading to the Hygaar channel.
 
 With the defaults above (Asia/Kolkata):
 
@@ -185,6 +212,7 @@ Docker: `cd deploy && docker compose up --build`.
 | **LinkedIn** | `w_member_social` access token for personal posts; `w_organization_social` + organization id for company pages. Partner verification required. | email + password; optional company page name or admin URL |
 | **Instagram** | Business account, Graph API token + IG user id, and a **public** image/video URL (the hosted server provides one). | username + password; generated image posts or video/Reels uploads |
 | **Medium** | Public API not reliable for new integrations — **browser mode only**. | email + password; **16:9 image required**; `MEDIUM_PUBLISH_STATUS` = `draft` or `public`; optional `MEDIUM_EXPECTED_ACCOUNT` guard |
+| **YouTube** | OAuth refresh token/client for scope `https://www.googleapis.com/auth/youtube.upload`; uploads use resumable `videos.insert`. | Not supported |
 
 Because API approval can take weeks (and X now charges), **browser mode** lets users
 start posting immediately; they can upgrade to API mode later.
@@ -204,11 +232,12 @@ reachly/            # the agent core — no server dependency
   models.py         # BusinessProfile, PlatformCredentials, GeneratedPost ...
   llm.py            # Gemini / OpenAI / Anthropic text generation
   content.py        # theme rotation + post generation
-  media.py          # Gemini image gen + Hygaar client (X-API-Key)
-  platforms/        # twitter / linkedin / instagram / medium  (api + browser)
-  agent.py          # harness: run_linkedin_slot / run_instagram_slot / run_medium_slot
-  scheduler.py      # APScheduler: LinkedIn at POST_TIMES, IG at offset, Medium at MEDIUM_TIMES
-  runner.py         # CLI: preview | once | run | instagram
+  media.py          # Gemini image gen, Seedance, ElevenLabs, Hygaar client
+  longform_video.py # 90s narration-led video pipeline + QC retries
+  platforms/        # twitter / linkedin / instagram / medium / youtube
+  agent.py          # harness: run_linkedin_slot / run_instagram_slot / run_medium_slot / run_longform_video_slot
+  scheduler.py      # APScheduler: LinkedIn, IG offset, Medium, long-form video
+  runner.py         # CLI: preview | once | run | instagram | longform-video
   storage.py        # sqlite post history (dedupe + audit)
 
 server/             # the multi-tenant SaaS

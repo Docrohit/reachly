@@ -8,6 +8,7 @@ from typing import Optional
 
 DEFAULT_POST_TIMES = ["09:00", "12:00", "15:00", "18:00", "21:00"]
 DEFAULT_INSTAGRAM_OFFSET_MINUTES = 5
+DEFAULT_LONGFORM_VIDEO_TIMES = ["11:30", "17:30"]
 
 
 def offset_times(times: list[str], minutes: int) -> list[str]:
@@ -36,12 +37,14 @@ def load_dashboard_settings(data_dir: Path) -> dict:
         return {
             "post_times": list(DEFAULT_POST_TIMES),
             "instagram_offset_minutes": DEFAULT_INSTAGRAM_OFFSET_MINUTES,
+            "longform_video_times": list(DEFAULT_LONGFORM_VIDEO_TIMES),
             "posting_style": "thought_leader",
             "context_repo": "",
         }
     data = json.loads(path.read_text(encoding="utf-8"))
     data.setdefault("post_times", DEFAULT_POST_TIMES)
     data.setdefault("instagram_offset_minutes", DEFAULT_INSTAGRAM_OFFSET_MINUTES)
+    data.setdefault("longform_video_times", DEFAULT_LONGFORM_VIDEO_TIMES)
     data.setdefault("posting_style", "thought_leader")
     data.setdefault("context_repo", "")
     return data
@@ -54,6 +57,7 @@ def save_dashboard_settings(
     posting_style: str,
     context_repo: str,
     instagram_offset_minutes: int = DEFAULT_INSTAGRAM_OFFSET_MINUTES,
+    longform_video_times: Optional[list[str]] = None,
 ) -> None:
     Path(data_dir).mkdir(parents=True, exist_ok=True)
     settings_path(data_dir).write_text(
@@ -61,6 +65,7 @@ def save_dashboard_settings(
             {
                 "post_times": post_times,
                 "instagram_offset_minutes": instagram_offset_minutes,
+                "longform_video_times": longform_video_times or DEFAULT_LONGFORM_VIDEO_TIMES,
                 "posting_style": posting_style,
                 "context_repo": context_repo,
             },
@@ -96,6 +101,18 @@ def parse_instagram_offset(value: Optional[str], data_dir: Path) -> int:
     if value and str(value).strip().isdigit():
         return int(value)
     return DEFAULT_INSTAGRAM_OFFSET_MINUTES
+
+
+def parse_longform_video_times(value: Optional[str], data_dir: Path) -> list[str]:
+    """Dashboard settings override env after first save; env seeds installs."""
+    if settings_path(data_dir).is_file():
+        return load_dashboard_settings(data_dir).get(
+            "longform_video_times",
+            DEFAULT_LONGFORM_VIDEO_TIMES,
+        )
+    if value and value.strip():
+        return [t.strip() for t in value.split(",") if t.strip()]
+    return DEFAULT_LONGFORM_VIDEO_TIMES
 
 
 def instagram_times_for(linkedin_times: list[str], offset_minutes: int) -> list[str]:

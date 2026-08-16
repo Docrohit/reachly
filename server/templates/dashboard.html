@@ -19,6 +19,7 @@
       <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,12:00,15:00,18:00,21:00"/></div>
       <div><label>Instagram offset minutes</label><input name="instagram_offset_minutes" type="number" min="0" max="240" value="{{ user.instagram_offset_minutes }}"/></div>
       <div><label>Medium article slots</label><input name="medium_times" value="{{ user.medium_times }}" placeholder="09:30,14:30,19:30"/></div>
+      <div><label>Long-form video slots</label><input name="longform_video_times" value="{{ user.longform_video_times }}" placeholder="11:30,17:30"/></div>
       <div><label>Timezone (IANA)</label><input name="timezone" value="{{ user.timezone }}"/></div>
     </div>
     <input type="hidden" name="post_time" value="{{ user.post_time }}"/>
@@ -31,6 +32,9 @@
         <option value="off" {{ 'selected' if not user.dry_run }}>Live (actually post)</option></select></div>
     </div>
     <div class="row" style="margin-top:10px;align-items:center">
+      <div><label>Long-form video schedule</label>
+        <select name="longform_video_enabled"><option value="off" {{ 'selected' if not user.longform_video_enabled }}>Off</option>
+        <option value="on" {{ 'selected' if user.longform_video_enabled }}>On</option></select></div>
       <div><label>LinkedIn engagement follow-up</label>
         <select name="enable_engagement"><option value="off" {{ 'selected' if not user.enable_engagement }}>Off</option>
         <option value="on" {{ 'selected' if user.enable_engagement }}>On</option></select></div>
@@ -45,6 +49,19 @@
     <button class="btn" onclick="runNow()">▶ Generate &amp; post now</button>
     <span id="runMsg" class="muted"></span>
   </div>
+</div>
+
+<div class="card">
+  <h2>Long-form video maker</h2>
+  <p class="muted">Auto mode uses today's post theme. Optional topic, title, hook, and payoff steer one manual video.</p>
+  <div class="row">
+    <div><label>Topic override</label><input id="lfTopic" placeholder="Optional topic / theme"/></div>
+    <div><label>Title override</label><input id="lfTitle" placeholder="Optional video title"/></div>
+  </div>
+  <label>Hook override</label><input id="lfHook" placeholder="Optional opening hook"/>
+  <label>Payoff override</label><input id="lfPayoff" placeholder="Optional closing payoff / CTA"/>
+  <button class="btn primary" style="margin-top:12px" onclick="runLongformVideo()">Run long-form video</button>
+  <span id="longformMsg" class="muted"></span>
 </div>
 
 <div class="card">
@@ -116,6 +133,12 @@
       <div><label>Anthropic API key</label><input name="anthropic_api_key" type="password" placeholder="•••• (saved)"/></div>
     </div>
     <div class="row">
+      <div><label>ElevenLabs API key</label><input name="elevenlabs_api_key" type="password" placeholder="•••• (saved)"/></div>
+      <div><label>ElevenLabs voice id</label><input name="elevenlabs_voice_id" placeholder="voice id for narration"/></div>
+      <div><label>ElevenLabs model</label><input name="elevenlabs_model" placeholder="eleven_v3"/></div>
+      <div><label>ElevenLabs output</label><input name="elevenlabs_output_format" placeholder="mp3_44100_128"/></div>
+    </div>
+    <div class="row">
       <div><label>Hygaar base URL</label><input name="hygaar_base_url" placeholder="https://dev-genai.hygaar.com"/></div>
       <div><label>Hygaar API key (X-API-Key)</label><input name="hygaar_api_token" type="password" placeholder="hygaar_••••"/></div>
     </div>
@@ -158,6 +181,23 @@
         </select></div>
     </div>
     <div class="row">
+      <div><label>Long-form target seconds</label><input name="longform_video_target_seconds" placeholder="90"/></div>
+      <div><label>Long-form card seconds</label><input name="longform_video_card_seconds" placeholder="18"/></div>
+      <div><label>Max remakes per card</label><input name="longform_video_max_card_retries" placeholder="2"/></div>
+      <div><label>Title alignment threshold</label><input name="longform_video_title_alignment_threshold" placeholder="7"/></div>
+    </div>
+    <div class="row">
+      <div><label>Gemini clip QC</label>
+        <select name="longform_video_qc_enabled">
+          <option value="">Default (Yes)</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select></div>
+      <div><label>QC model</label><input name="longform_video_qc_model" placeholder="gemini-2.5-flash"/></div>
+      <div><label>Transcription model</label><input name="openai_transcription_model" placeholder="gpt-4o-transcribe"/></div>
+      <div><label>Transcription fallback</label><input name="openai_transcription_fallback_model" placeholder="whisper-1"/></div>
+    </div>
+    <div class="row">
       <div><label>Brand logo path</label><input name="brand_logo_path" placeholder="/opt/reachly/assets/hygaar_logo.png"/></div>
       <div><label>Logo position</label>
         <select name="brand_logo_position">
@@ -175,7 +215,7 @@
 </div>
 
 <div class="grid cols2">
-  {% for p in ['twitter','linkedin','instagram','medium'] %}
+  {% for p in ['twitter','linkedin','instagram','medium','youtube'] %}
   <div class="card">
     <h2 style="text-transform:capitalize">{{ p }}
       <span class="pill {{ 'on' if cred_modes.get(p,'off')!='off' else 'off' }}">
@@ -219,7 +259,7 @@
           <div><label>Username (browser mode)</label><input name="username"/></div>
           <div><label>Password (browser mode)</label><input name="password" type="password"/></div>
         </div>
-      {% else %}
+      {% elif p=='medium' %}
         <p class="muted">Medium browser mode is the reliable path today. API mode is intentionally disabled until a stable Medium publishing API is approved.</p>
         <label>Email (browser mode)</label><input name="email"/>
         <label>Password (browser mode)</label><input name="password" type="password"/>
@@ -229,6 +269,29 @@
           <option value="public">Public</option>
         </select>
         <label>Expected account guard</label><input name="expected_account" placeholder="Rohit Sharma or publication name"/>
+      {% else %}
+        <p class="muted">YouTube uploads use the official Data API with OAuth scope https://www.googleapis.com/auth/youtube.upload.</p>
+        <label>Access token (optional short-lived)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
+        <label>Refresh token</label><input name="youtube_refresh_token" type="password" placeholder="•••• (saved)"/>
+        <div class="row">
+          <div><label>OAuth client ID</label><input name="youtube_client_id" type="password" placeholder="client id"/></div>
+          <div><label>OAuth client secret</label><input name="youtube_client_secret" type="password" placeholder="client secret"/></div>
+        </div>
+        <div class="row">
+          <div><label>Privacy</label>
+            <select name="youtube_privacy_status">
+              <option value="private">Private</option>
+              <option value="unlisted">Unlisted</option>
+              <option value="public">Public</option>
+            </select></div>
+          <div><label>Category ID</label><input name="youtube_category_id" placeholder="22"/></div>
+          <div><label>Notify subscribers</label>
+            <select name="youtube_notify_subscribers">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select></div>
+        </div>
+        <label>Default tags</label><input name="youtube_default_tags" placeholder="Hygaar, AI product photography"/>
       {% endif %}
       <button class="btn primary" style="margin-top:12px" type="submit">Save {{ p }}</button>
     </form>
@@ -264,6 +327,20 @@ async function runNow(){
   const j = await r.json();
   msg.textContent = ' ' + JSON.stringify(j);
   setTimeout(()=>location.reload(), 1500);
+}
+
+async function runLongformVideo(){
+  const msg = document.getElementById('longformMsg');
+  msg.textContent = ' Working… generating narration-led video…';
+  const fd = new FormData();
+  fd.append('topic', document.getElementById('lfTopic').value);
+  fd.append('title', document.getElementById('lfTitle').value);
+  fd.append('hook', document.getElementById('lfHook').value);
+  fd.append('payoff', document.getElementById('lfPayoff').value);
+  const r = await fetch('/dashboard/run-longform-video',{method:'POST', body:fd});
+  const j = await r.json();
+  msg.textContent = ' ' + JSON.stringify(j);
+  setTimeout(()=>location.reload(), 4000);
 }
 </script>
 {% endblock %}

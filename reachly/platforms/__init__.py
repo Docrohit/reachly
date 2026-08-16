@@ -39,6 +39,15 @@ def get_poster(creds: PlatformCredentials, *, data_dir, public_media_base_url=No
 
         return MediumBrowserPoster(creds, data_dir=data_dir)
 
+    if creds.platform == Platform.youtube:
+        if creds.mode == PlatformMode.api:
+            from .youtube import YouTubeApiPoster
+
+            return YouTubeApiPoster(creds)
+        from .youtube import YouTubeBrowserPoster
+
+        return YouTubeBrowserPoster(creds)
+
     raise ValueError(f"Unsupported platform: {creds.platform}")
 
 

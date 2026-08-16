@@ -38,6 +38,8 @@ class User(SQLModel, table=True):
     post_times: str = "09:00,12:00,15:00,18:00,21:00"
     instagram_offset_minutes: int = 5
     medium_times: str = "09:30,14:30,19:30"
+    longform_video_enabled: bool = False
+    longform_video_times: str = "11:30,17:30"
     timezone: str = "UTC"
     attach_image: bool = True
     dry_run: bool = True               # users start in dry-run until they confirm
@@ -129,6 +131,8 @@ def _migrate_sqlite() -> None:
             "post_times": "VARCHAR NOT NULL DEFAULT '09:00,12:00,15:00,18:00,21:00'",
             "instagram_offset_minutes": "INTEGER NOT NULL DEFAULT 5",
             "medium_times": "VARCHAR NOT NULL DEFAULT '09:30,14:30,19:30'",
+            "longform_video_enabled": "BOOLEAN NOT NULL DEFAULT 0",
+            "longform_video_times": "VARCHAR NOT NULL DEFAULT '11:30,17:30'",
             "enable_engagement": "BOOLEAN NOT NULL DEFAULT 0",
             "engagement_delay_minutes": "INTEGER NOT NULL DEFAULT 30",
             "engagement_max_comments": "INTEGER NOT NULL DEFAULT 3",

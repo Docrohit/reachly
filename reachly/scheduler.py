@@ -20,6 +20,7 @@ def run_daily(
     linkedin_times: list[str],
     instagram_times: list[str],
     medium_times: list[str],
+    longform_video_times: list[str] | None = None,
     timezone: str,
 ) -> None:
     sched = BlockingScheduler(timezone=timezone)
@@ -120,11 +121,33 @@ def run_daily(
             misfire_grace_time=900,
         )
 
+    for pt in longform_video_times or []:
+        h, m = (int(x) for x in pt.strip().split(":"))
+
+        def _longform_job(hour=h, minute=m, slot=pt):
+            logger.info("Long-form video trigger at %s (%s).", slot, timezone)
+            try:
+                agent.run_longform_video_slot()
+            except Exception as e:  # noqa: BLE001
+                message = f"Long-form video run failed at {slot}: {e}"
+                logger.exception(message)
+                agent.history.record_event(platform="longform_video", ok=False, error=message)
+
+        sched.add_job(
+            _longform_job,
+            CronTrigger(hour=h, minute=m, timezone=timezone),
+            id=f"longform-video-{pt}",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=900,
+        )
+
     logger.info(
-        "Reachly scheduled — LinkedIn: %s | Instagram: %s | Medium: %s (%s)",
+        "Reachly scheduled — LinkedIn: %s | Instagram: %s | Medium: %s | Long-form video: %s (%s)",
         ", ".join(linkedin_times),
         ", ".join(instagram_times),
         ", ".join(medium_times),
+        ", ".join(longform_video_times or []),
         timezone,
     )
     try:

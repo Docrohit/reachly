@@ -3,15 +3,18 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
 
 from .agent import Agent
 from .config import AgentConfig
+from .longform_video import LongFormManualBrief
 from .media import SeedanceClient
 from .models import Platform
 from .scheduler import run_daily
 from .settings_store import (
     instagram_times_for,
+    parse_longform_video_times,
     parse_instagram_offset,
     parse_post_times,
 )
@@ -146,6 +149,43 @@ def _seedance_account_check(cfg: AgentConfig, *, duration: int = 4) -> int:
     return 0 if ok else 2
 
 
+def _longform_video_preflight(cfg: AgentConfig) -> int:
+    checks: list[tuple[str, bool, str]] = []
+    checks.append(("ffmpeg", bool(shutil.which("ffmpeg")), "ffmpeg is required for render/QC frames"))
+    checks.append(("ffprobe", bool(shutil.which("ffprobe")), "ffprobe is required for audio/video timing"))
+    checks.append(("seedance_api_key", bool(cfg.seedance_api_key), "missing SEEDANCE_API_KEY, ARK_API_KEY, or MODELARK_API_KEY"))
+    checks.append(("elevenlabs_api_key", bool(cfg.elevenlabs_api_key), "missing ELEVENLABS_API_KEY"))
+    checks.append(("openai_api_key", bool(cfg.openai_api_key), "missing OPENAI_API_KEY for gpt-4o-transcribe/whisper fallback"))
+    checks.append(("gemini_api_key", bool(cfg.gemini_api_key) or not cfg.longform_video_qc_enabled, "missing GEMINI_API_KEY for clip hallucination QC"))
+    linkedin = cfg.platforms[Platform.linkedin]
+    youtube = cfg.platforms[Platform.youtube]
+    checks.append(("linkedin_enabled", linkedin.enabled, "LINKEDIN_MODE is off"))
+    checks.append(("youtube_enabled", youtube.enabled, "YOUTUBE_MODE is off"))
+    checks.append(("youtube_api_mode", youtube.mode.value in ("api", "off"), "YouTube long-form posting supports API mode only"))
+    if youtube.enabled:
+        has_oauth = bool(
+            youtube.extra.get("refresh_token")
+            and youtube.extra.get("client_id")
+            and youtube.extra.get("client_secret")
+        )
+        checks.append(
+            (
+                "youtube_oauth",
+                has_oauth or bool(youtube.api_token),
+                "need YOUTUBE_REFRESH_TOKEN + YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET, or YOUTUBE_ACCESS_TOKEN",
+            )
+        )
+
+    ok = True
+    for name, passed, detail in checks:
+        marker = "ok" if passed else "missing"
+        print(f"{marker:7} {name}")
+        if not passed:
+            print(f"        {detail}")
+            ok = False
+    return 0 if ok else 2
+
+
 def main(argv=None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -163,6 +203,8 @@ def main(argv=None) -> int:
             "medium",
             "video-test",
             "video-preflight",
+            "longform-video",
+            "longform-video-preflight",
             "seedance-account-check",
             "analytics",
             "engage",
@@ -170,11 +212,16 @@ def main(argv=None) -> int:
         help=(
             "once=all enabled | linkedin=LinkedIn only | instagram=IG test | twitter=X test | medium=Medium article | "
             "video-test=one video to LinkedIn+Instagram only | video-preflight=check live video config | "
+            "longform-video=one narration-led 16:9 video to LinkedIn+YouTube | "
+            "longform-video-preflight=check long-form video config | "
             "seedance-account-check=probe Seedance model activation/billing with minimal tasks | "
             "analytics=print recent performance context | run=scheduler | preview=dry-run"
         ),
     )
     parser.add_argument("--theme", default=None, help="override today's theme")
+    parser.add_argument("--longform-title", default=None, help="manual title for long-form video")
+    parser.add_argument("--longform-hook", default=None, help="manual opening hook for long-form video")
+    parser.add_argument("--longform-payoff", default=None, help="manual closing payoff/CTA for long-form video")
     parser.add_argument(
         "--media-kind",
         choices=["auto", "image", "video"],
@@ -210,6 +257,8 @@ def main(argv=None) -> int:
     cfg = AgentConfig.from_env_file(args.env)
     if args.command == "video-preflight":
         return _video_preflight(cfg, include_instagram=args.include_instagram)
+    if args.command == "longform-video-preflight":
+        return _longform_video_preflight(cfg)
     if args.command == "seedance-account-check":
         return _seedance_account_check(cfg, duration=args.seedance_check_duration)
     if args.command == "preview":
@@ -277,6 +326,17 @@ def main(argv=None) -> int:
         agent.close()
         return _results_exit_code(results)
 
+    if args.command == "longform-video":
+        manual = LongFormManualBrief(
+            topic=args.theme,
+            title=args.longform_title,
+            hook=args.longform_hook,
+            payoff=args.longform_payoff,
+        )
+        results = agent.run_longform_video_slot(theme=args.theme, manual=manual)
+        agent.close()
+        return _results_exit_code(results)
+
     if args.command == "engage":
         count = agent.engage_after_linkedin_post()
         print(f"LinkedIn engagement comments posted: {count}")
@@ -303,6 +363,11 @@ def main(argv=None) -> int:
         linkedin_times=li_times,
         instagram_times=ig_times if agent.platforms[Platform.instagram].enabled else [],
         medium_times=medium_times if agent.platforms[Platform.medium].enabled else [],
+        longform_video_times=(
+            parse_longform_video_times(cfg.longform_video_times_raw, cfg.data_dir)
+            if cfg.longform_video_enabled
+            else []
+        ),
         timezone=cfg.timezone,
     )
     return 0

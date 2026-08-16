@@ -29,6 +29,11 @@ from .config import AgentConfig
 from .content import generate_engagement_comment, generate_medium_article, generate_post, pick_theme
 from .context import load_strategy_context
 from .llm import LLMClient
+from .longform_video import (
+    LongFormManualBrief,
+    LongFormVideoConfig,
+    LongFormVideoMaker,
+)
 from .media import (
     HygaarClient,
     SeedanceClient,
@@ -75,6 +80,15 @@ class AgentSettings:
     seedance_clip_duration: int = 15
     seedance_generate_audio: bool = True
     seedance_watermark: bool = False
+    longform_video_enabled: bool = False
+    longform_video_target_seconds: int = 90
+    longform_video_card_seconds: int = 18
+    longform_video_max_card_retries: int = 2
+    longform_video_title_alignment_threshold: int = 7
+    longform_video_qc_enabled: bool = True
+    longform_video_qc_model: str = "gemini-2.5-flash"
+    openai_transcription_model: str = "gpt-4o-transcribe"
+    openai_transcription_fallback_model: str = "whisper-1"
     video_voiceover_enabled: bool = True
     video_voiceover_provider: str = "elevenlabs"
     video_voiceover_model: str = "tts-1"
@@ -176,6 +190,15 @@ class Agent:
             seedance_clip_duration=cfg.seedance_clip_duration,
             seedance_generate_audio=cfg.seedance_generate_audio,
             seedance_watermark=cfg.seedance_watermark,
+            longform_video_enabled=cfg.longform_video_enabled,
+            longform_video_target_seconds=cfg.longform_video_target_seconds,
+            longform_video_card_seconds=cfg.longform_video_card_seconds,
+            longform_video_max_card_retries=cfg.longform_video_max_card_retries,
+            longform_video_title_alignment_threshold=cfg.longform_video_title_alignment_threshold,
+            longform_video_qc_enabled=cfg.longform_video_qc_enabled,
+            longform_video_qc_model=cfg.longform_video_qc_model,
+            openai_transcription_model=cfg.openai_transcription_model,
+            openai_transcription_fallback_model=cfg.openai_transcription_fallback_model,
             video_voiceover_enabled=cfg.video_voiceover_enabled,
             video_voiceover_provider=cfg.video_voiceover_provider,
             video_voiceover_model=cfg.video_voiceover_model,
@@ -260,6 +283,52 @@ class Agent:
             strategy=self._strategy,
         )
         return self._ensure_image(post, aspect_ratio=self.settings.medium_image_aspect_ratio)
+
+    def build_longform_video(
+        self,
+        theme: Optional[str] = None,
+        *,
+        manual: Optional[LongFormManualBrief] = None,
+    ) -> GeneratedPost:
+        """Build a 16:9 narration-led video post from the daily post theme."""
+        manual = manual or LongFormManualBrief()
+        source_theme = manual.topic or theme
+        source_post = self.build_post(source_theme, attach_image=False)
+        logger.info("Generating long-form video for theme: %s", source_post.theme)
+        maker = LongFormVideoMaker(
+            llm=self.llm,
+            business=self.business,
+            strategy_text=self._strategy.for_prompt(),
+            config=self._longform_video_config(),
+        )
+        result = maker.make(source_post, manual=manual)
+        result.post.media = self._make_public_media(result.final_media)
+        logger.info("Long-form video manifest: %s", result.manifest_path)
+        return result.post
+
+    def _longform_video_config(self) -> LongFormVideoConfig:
+        return LongFormVideoConfig(
+            data_dir=self.settings.data_dir,
+            target_seconds=self.settings.longform_video_target_seconds,
+            card_seconds=self.settings.longform_video_card_seconds,
+            max_card_retries=self.settings.longform_video_max_card_retries,
+            title_alignment_threshold=self.settings.longform_video_title_alignment_threshold,
+            qc_enabled=self.settings.longform_video_qc_enabled,
+            qc_model=self.settings.longform_video_qc_model,
+            openai_transcription_model=self.settings.openai_transcription_model,
+            openai_transcription_fallback_model=self.settings.openai_transcription_fallback_model,
+            seedance_api_key=self.settings.seedance_api_key,
+            seedance_base_url=self.settings.seedance_base_url,
+            seedance_model=self.settings.seedance_model,
+            seedance_fallback_model=self.settings.seedance_fallback_model,
+            seedance_watermark=self.settings.seedance_watermark,
+            elevenlabs_api_key=self.settings.elevenlabs_api_key,
+            elevenlabs_voice_id=self.settings.elevenlabs_voice_id,
+            elevenlabs_model=self.settings.elevenlabs_model,
+            elevenlabs_output_format=self.settings.elevenlabs_output_format,
+            openai_api_key=self.settings.openai_api_key,
+            gemini_api_key=self.settings.gemini_api_key,
+        )
 
     def _generate_media(self, prompt: str, *, aspect_ratio: str = "1:1") -> Optional[GeneratedMedia]:
         media_dir = self.settings.data_dir / "media"
@@ -851,6 +920,43 @@ class Agent:
                 self._last_linkedin_post = post
             return results
 
+    def run_longform_video_slot(
+        self,
+        theme: Optional[str] = None,
+        *,
+        manual: Optional[LongFormManualBrief] = None,
+    ) -> dict[Platform, PostResult]:
+        """Generate one narration-led 16:9 video and publish to LinkedIn + YouTube."""
+        with self._run_lock:
+            targets = [
+                platform
+                for platform in (Platform.linkedin, Platform.youtube)
+                if self.platforms.get(platform) and self.platforms[platform].enabled
+            ]
+            if not targets:
+                return {
+                    Platform.linkedin: PostResult(
+                        platform=Platform.linkedin,
+                        ok=False,
+                        error="Long-form video has no enabled LinkedIn or YouTube target.",
+                    )
+                }
+            try:
+                post = self.build_longform_video(theme=theme, manual=manual)
+            except Exception as e:  # noqa: BLE001
+                error = f"Long-form video generation failed: {str(e)[:500]}"
+                logger.exception(error)
+                return {
+                    platform: PostResult(platform=platform, ok=False, error=error)
+                    for platform in targets
+                }
+            if not self._has_video(post):
+                return self._video_required_results(targets)
+            results = self._publish(post, platforms=targets)
+            if results.get(Platform.linkedin) and results[Platform.linkedin].ok:
+                self._last_linkedin_post = post
+            return results
+
     def _publish(
         self,
         post: GeneratedPost,
@@ -916,7 +1022,7 @@ class Agent:
         if platform in (Platform.instagram, Platform.medium) or not post.media:
             return post
         if post.media.kind == "video":
-            return post if platform == Platform.linkedin else post.model_copy(update={"media": None})
+            return post if platform in (Platform.linkedin, Platform.youtube) else post.model_copy(update={"media": None})
         if self._use_media_on_text_platform(post, platform):
             return post
         return post.model_copy(update={"media": None})

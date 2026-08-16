@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -39,7 +40,7 @@ from .db import (
     init_db,
 )
 from .hygaar_auth import HygaarAuthError, login_with_hygaar
-from .orchestrator import run_user_now, start_scheduler
+from .orchestrator import run_user_longform_video_slot, run_user_now, start_scheduler
 from .settings import get_settings
 from .telegram_bot import generate_and_send_otp, start_bot_thread, verify_otp
 
@@ -297,6 +298,10 @@ def save_profile(
     gemini_api_key: str = Form(""),
     openai_api_key: str = Form(""),
     anthropic_api_key: str = Form(""),
+    elevenlabs_api_key: str = Form(""),
+    elevenlabs_voice_id: str = Form(""),
+    elevenlabs_model: str = Form(""),
+    elevenlabs_output_format: str = Form(""),
     hygaar_base_url: str = Form(""),
     hygaar_api_token: str = Form(""),
     seedance_api_key: str = Form(""),
@@ -309,6 +314,14 @@ def save_profile(
     seedance_clip_duration: str = Form(""),
     seedance_generate_audio: str = Form(""),
     seedance_watermark: str = Form(""),
+    longform_video_target_seconds: str = Form(""),
+    longform_video_card_seconds: str = Form(""),
+    longform_video_max_card_retries: str = Form(""),
+    longform_video_title_alignment_threshold: str = Form(""),
+    longform_video_qc_enabled: str = Form(""),
+    longform_video_qc_model: str = Form(""),
+    openai_transcription_model: str = Form(""),
+    openai_transcription_fallback_model: str = Form(""),
     daily_media_plan: str = Form(""),
     brand_logo_path: str = Form(""),
     brand_logo_position: str = Form("bottom-right"),
@@ -328,6 +341,10 @@ def save_profile(
             "gemini_api_key": gemini_api_key,
             "openai_api_key": openai_api_key,
             "anthropic_api_key": anthropic_api_key,
+            "elevenlabs_api_key": elevenlabs_api_key,
+            "elevenlabs_voice_id": elevenlabs_voice_id,
+            "elevenlabs_model": elevenlabs_model,
+            "elevenlabs_output_format": elevenlabs_output_format,
             "hygaar_base_url": hygaar_base_url,
             "hygaar_api_token": hygaar_api_token,
             "seedance_api_key": seedance_api_key,
@@ -340,6 +357,14 @@ def save_profile(
             "seedance_clip_duration": seedance_clip_duration,
             "seedance_generate_audio": seedance_generate_audio,
             "seedance_watermark": seedance_watermark,
+            "longform_video_target_seconds": longform_video_target_seconds,
+            "longform_video_card_seconds": longform_video_card_seconds,
+            "longform_video_max_card_retries": longform_video_max_card_retries,
+            "longform_video_title_alignment_threshold": longform_video_title_alignment_threshold,
+            "longform_video_qc_enabled": longform_video_qc_enabled,
+            "longform_video_qc_model": longform_video_qc_model,
+            "openai_transcription_model": openai_transcription_model,
+            "openai_transcription_fallback_model": openai_transcription_fallback_model,
             "daily_media_plan": daily_media_plan,
             "brand_logo_path": brand_logo_path,
             "brand_logo_position": brand_logo_position,
@@ -397,6 +422,13 @@ def save_platform(
     post_as: str = Form(""),
     company_admin_url: str = Form(""),
     ig_user_id: str = Form(""),
+    youtube_refresh_token: str = Form(""),
+    youtube_client_id: str = Form(""),
+    youtube_client_secret: str = Form(""),
+    youtube_privacy_status: str = Form("private"),
+    youtube_category_id: str = Form("22"),
+    youtube_notify_subscribers: str = Form("false"),
+    youtube_default_tags: str = Form(""),
     publish_status: str = Form("draft"),
     expected_account: str = Form(""),
     email: str = Form(""),
@@ -407,10 +439,12 @@ def save_platform(
     user = require_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    if platform not in {"twitter", "linkedin", "instagram", "medium"} or mode not in {"off", "api", "browser"}:
+    if platform not in {"twitter", "linkedin", "instagram", "medium", "youtube"} or mode not in {"off", "api", "browser"}:
         return JSONResponse({"error": "invalid platform settings"}, status_code=400)
     if platform == "medium" and mode == "api":
         return JSONResponse({"error": "Medium API mode is not supported yet. Use browser or off."}, status_code=400)
+    if platform == "youtube" and mode == "browser":
+        return JSONResponse({"error": "YouTube browser mode is not supported yet. Use API or off."}, status_code=400)
 
     secrets_map = {
         k: v for k, v in {
@@ -425,6 +459,13 @@ def save_platform(
             "post_as": post_as,
             "company_admin_url": company_admin_url,
             "user_id": ig_user_id,
+            "refresh_token": youtube_refresh_token,
+            "client_id": youtube_client_id,
+            "client_secret": youtube_client_secret,
+            "privacy_status": youtube_privacy_status if platform == "youtube" else "",
+            "category_id": youtube_category_id if platform == "youtube" else "",
+            "notify_subscribers": youtube_notify_subscribers if platform == "youtube" else "",
+            "default_tags": youtube_default_tags,
             "publish_status": publish_status,
             "expected_account": expected_account,
             "email": email,
@@ -460,6 +501,8 @@ def save_settings(
     post_times: str = Form("09:00,12:00,15:00,18:00,21:00"),
     instagram_offset_minutes: int = Form(5),
     medium_times: str = Form("09:30,14:30,19:30"),
+    longform_video_enabled: str = Form("off"),
+    longform_video_times: str = Form("11:30,17:30"),
     timezone: str = Form("UTC"),
     attach_image: str = Form("on"),
     dry_run: str = Form("off"),
@@ -474,10 +517,13 @@ def save_settings(
         u = session.get(User, user.id)
         cleaned_post_times = ",".join(_parse_time_list(post_times)) or post_time
         cleaned_medium_times = ",".join(_parse_time_list(medium_times))
+        cleaned_longform_video_times = ",".join(_parse_time_list(longform_video_times))
         u.post_time = post_time
         u.post_times = cleaned_post_times
         u.instagram_offset_minutes = max(0, min(240, instagram_offset_minutes))
         u.medium_times = cleaned_medium_times
+        u.longform_video_enabled = longform_video_enabled == "on"
+        u.longform_video_times = cleaned_longform_video_times
         u.timezone = timezone
         u.attach_image = attach_image == "on"
         u.dry_run = dry_run == "on"
@@ -513,6 +559,35 @@ def run_now(request: Request):
         return JSONResponse({"error": "not authenticated"}, status_code=401)
     result = run_user_now(user.id)
     return JSONResponse(result)
+
+
+@app.post("/dashboard/run-longform-video")
+def run_longform_video(
+    request: Request,
+    topic: str = Form(""),
+    title: str = Form(""),
+    hook: str = Form(""),
+    payoff: str = Form(""),
+):
+    user = require_user(request)
+    if not user:
+        return JSONResponse({"error": "not authenticated"}, status_code=401)
+    user_id = user.id
+    manual = {
+        "theme": topic.strip() or None,
+        "title": title.strip() or None,
+        "hook": hook.strip() or None,
+        "payoff": payoff.strip() or None,
+    }
+
+    def _job() -> None:
+        try:
+            run_user_longform_video_slot(user_id, **manual)
+        except Exception:  # noqa: BLE001
+            logger.exception("Hosted long-form video run failed for user %s.", user_id)
+
+    threading.Thread(target=_job, daemon=True).start()
+    return JSONResponse({"ok": True, "message": "Long-form video job started. Refresh later for logs."})
 
 
 # ---- billing ----------------------------------------------------------

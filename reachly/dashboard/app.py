@@ -24,6 +24,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from reachly.agent import Agent
 from reachly.config import AgentConfig
 from reachly.context import load_strategy_context
+from reachly.longform_video import LongFormManualBrief
 from reachly.settings_store import (
     DEFAULT_POST_TIMES,
     load_dashboard_settings,
@@ -128,11 +129,17 @@ def create_app() -> FastAPI:
         posting_style: str = Form("thought_leader"),
         post_times: str = Form("09:00,12:00,15:00,18:00,21:00"),
         instagram_offset_minutes: int = Form(5),
+        longform_video_times: str = Form("11:30,17:30"),
         context_repo: str = Form(""),
     ):
         if not _auth_ok(request, cfg):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         times = [t.strip() for t in post_times.replace(" ", "").split(",") if t.strip()]
+        video_times = [
+            t.strip()
+            for t in longform_video_times.replace(" ", "").split(",")
+            if t.strip()
+        ]
         save_goals(cfg.data_dir, goals)
         save_dashboard_settings(
             cfg.data_dir,
@@ -140,6 +147,7 @@ def create_app() -> FastAPI:
             posting_style=posting_style,
             context_repo=context_repo.strip(),
             instagram_offset_minutes=instagram_offset_minutes,
+            longform_video_times=video_times,
         )
         return RedirectResponse(_dashboard_url(request, "/?saved=1"), status_code=303)
 
@@ -158,6 +166,36 @@ def create_app() -> FastAPI:
 
         threading.Thread(target=_job, daemon=True).start()
         return JSONResponse({"ok": True, "message": "Post job started. Refresh in ~60s for logs."})
+
+    @app.post("/run-longform-video")
+    def run_longform_video(
+        request: Request,
+        topic: str = Form(""),
+        title: str = Form(""),
+        hook: str = Form(""),
+        payoff: str = Form(""),
+    ):
+        if not _auth_ok(request, cfg):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+        def _job():
+            try:
+                agent = Agent.from_config(cfg)
+                agent.run_longform_video_slot(
+                    theme=topic.strip() or None,
+                    manual=LongFormManualBrief(
+                        topic=topic.strip() or None,
+                        title=title.strip() or None,
+                        hook=hook.strip() or None,
+                        payoff=payoff.strip() or None,
+                    ),
+                )
+                agent.close()
+            except Exception:  # noqa: BLE001
+                logger.exception("Dashboard long-form video run failed")
+
+        threading.Thread(target=_job, daemon=True).start()
+        return JSONResponse({"ok": True, "message": "Long-form video job started. Refresh later for assets/logs."})
 
     @app.get("/assets/{post_id}/media")
     def asset_media(

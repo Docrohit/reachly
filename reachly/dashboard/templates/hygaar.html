@@ -61,6 +61,8 @@
         <input name="post_times" value="{{ dash.post_times | join(',') }}" placeholder="{{ default_times }}"/>
         <label>Instagram offset after LinkedIn (minutes)</label>
         <input name="instagram_offset_minutes" value="{{ dash.instagram_offset_minutes or 5 }}" type="number" min="1" max="180"/>
+        <label>Long-form video times ({{ cfg.timezone }})</label>
+        <input name="longform_video_times" value="{{ dash.longform_video_times | join(',') }}" placeholder="11:30,17:30"/>
         <p class="muted">Default Hygaar: 9:00 AM, 1:30 PM, 9:00 PM</p>
       </div>
 
@@ -84,6 +86,21 @@
     </form>
     <span id="runMsg" class="muted"></span>
     <p class="muted">Uses enabled platform modes on server. DRY_RUN={{ cfg.dry_run }} in .env</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Long-form video</h2>
+    <p class="muted">Auto mode uses today's post theme. Optional fields let you steer the title, hook, and payoff like the YouTube Doodle flow.</p>
+    <form method="post" action="{{ base_path }}/run-longform-video" onsubmit="runLongform(event)">
+      <div class="grid cols2">
+        <div><label>Topic override</label><input name="topic" placeholder="Optional topic / theme"/></div>
+        <div><label>Title override</label><input name="title" placeholder="Optional video title"/></div>
+      </div>
+      <label>Hook override</label><input name="hook" placeholder="Optional opening hook"/>
+      <label>Payoff override</label><input name="payoff" placeholder="Optional closing payoff / CTA"/>
+      <button class="btn primary" type="submit">Run long-form video</button>
+      <span id="longformMsg" class="muted"></span>
+    </form>
   </div>
 
   <div class="card" style="margin-top:16px">
@@ -167,6 +184,17 @@ async function runNow(e){
   const j=await r.json();
   msg.textContent=j.message||JSON.stringify(j);
   setTimeout(()=>location.reload(),4000);
+}
+async function runLongform(e){
+  e.preventDefault();
+  const msg=document.getElementById('longformMsg');
+  msg.textContent=' Running…';
+  const fd=new FormData(e.target);
+  const basePath={{ base_path | tojson }};
+  const r=await fetch(`${basePath}/run-longform-video`,{method:'POST',body:fd});
+  const j=await r.json();
+  msg.textContent=j.message||JSON.stringify(j);
+  setTimeout(()=>location.reload(),8000);
 }
 async function copyText(id, btn){
   const el=document.getElementById(id);
