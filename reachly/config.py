@@ -135,7 +135,7 @@ class AgentConfig:
         self.openai_transcription_fallback_model = (
             env.get("REACHLY_OPENAI_TRANSCRIPTION_FALLBACK_MODEL") or "whisper-1"
         )
-        self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), True)
+        self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), False)
         self.video_voiceover_provider = (
             env.get("REACHLY_VIDEO_VOICEOVER_PROVIDER") or "elevenlabs"
         ).lower()

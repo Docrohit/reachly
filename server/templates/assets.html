@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Generated Content · Reachly{% endblock %}
+{% block content %}
+<h1>Generated content</h1>
+<p class="muted" style="margin-top:-8px">Images, videos and post copy generated for your business. Download individually or grab a ZIP.</p>
+
+<div class="card">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span><b>{{ image_count }}</b> images · <b>{{ video_count }}</b> videos in the last {{ hours }}h</span>
+    <span style="flex:1"></span>
+    {% for h in [24, 48, 72, 168] %}
+      <a class="btn ghost {% if hours == h %}primary{% endif %}" href="/dashboard/assets?hours={{ h }}">{{ h }}h</a>
+    {% endfor %}
+    <a class="btn primary" href="/dashboard/assets/archive?hours={{ hours }}">Download ZIP</a>
+  </div>
+</div>
+
+{% if assets %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px">
+  {% for a in assets %}
+  <div class="card">
+    {% if a.resolved_path %}
+      {% if a.media_kind == 'video' %}
+        <video controls preload="metadata" style="width:100%;border-radius:8px;background:#000">
+          <source src="/dashboard/assets/media/{{ a.post_id }}" type="video/mp4"/>
+        </video>
+      {% else %}
+        <a href="/dashboard/assets/media/{{ a.post_id }}" target="_blank">
+          <img src="/dashboard/assets/media/{{ a.post_id }}" alt="{{ a.theme or 'generated image' }}"
+               style="width:100%;border-radius:8px;background:#f4f5f7"/>
+        </a>
+      {% endif %}
+    {% else %}
+      <p class="muted">Media file no longer available on disk.</p>
+    {% endif %}
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+      {% for p in a.platforms %}
+        <span class="pill {{ 'on' if p.ok else 'off' }}">{{ p.platform }}</span>
+      {% endfor %}
+      {% if a.file_size %}<span class="pill">{{ a.file_size }}</span>{% endif %}
+      <span class="pill">{{ a.media_kind }}</span>
+    </div>
+    <p class="muted" style="margin:8px 0 0">{{ a.created_at }}</p>
+    {% if a.theme %}<p style="margin:6px 0 0"><b>Theme:</b> {{ a.theme }}</p>{% endif %}
+    {% if a.copy_text %}
+    <details style="margin-top:8px">
+      <summary class="muted">Post copy</summary>
+      <p style="white-space:pre-wrap;font-size:0.92em;margin:8px 0 0">{{ a.copy_text }}</p>
+    </details>
+    {% endif %}
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <a class="btn" href="/dashboard/assets/media/{{ a.post_id }}?download=true">Download</a>
+      {% if a.permalink %}<a class="btn ghost" href="{{ a.permalink }}" target="_blank">View post</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="margin-top:16px">
+  <p class="muted">No generated media yet in this window. Go to the
+    <a href="/dashboard">dashboard</a> and hit “Generate &amp; post now”, then come back here.
+    (Dry-run runs still generate media; nothing is published.)</p>
+</div>
+{% endif %}
+{% endblock %}

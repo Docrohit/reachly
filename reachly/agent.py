@@ -89,7 +89,7 @@ class AgentSettings:
     longform_video_qc_model: str = "gemini-2.5-flash"
     openai_transcription_model: str = "gpt-4o-transcribe"
     openai_transcription_fallback_model: str = "whisper-1"
-    video_voiceover_enabled: bool = True
+    video_voiceover_enabled: bool = False
     video_voiceover_provider: str = "elevenlabs"
     video_voiceover_model: str = "tts-1"
     video_voiceover_voice: str = "alloy"
@@ -468,17 +468,19 @@ class Agent:
     def _fresh_video_reference_images(self, post: GeneratedPost, *, count: int = 3) -> list[dict[str, str]]:
         prompts = [
             (
-                "Create a vertical premium ecommerce reference still for a Hygaar ad: "
-                "a messy SKU/catalog workflow transforms into an organized AI media command center. "
-                "No readable text, no fake dashboards, high-end studio lighting."
+                "Create a vertical cinematic reference still for a social media ad opening shot: "
+                "the place or environment where the business delivers its service - clean, "
+                "premium, welcoming, well-lit. No readable text, no logos, no people, no faces, no hands."
             ),
             (
-                "Create a vertical reference still showing product catalog scale: many product variants, "
-                "consistent lighting, clean ecommerce composition, premium but operational. No text."
+                "Create a vertical reference still showing the tools, equipment or service details "
+                "in a ready state - premium composition, studio lighting. "
+                "No text, no people, no faces, no hands."
             ),
             (
-                "Create a vertical reference still for the closing shot of a genAI catalog content ad: "
-                "polished product media outputs ready for marketplace, PDP, ads, and social. No text."
+                "Create a vertical reference still for the closing shot: the brand space, "
+                "products or finished service result at its best - aspirational and calm. "
+                "No text, no people, no faces, no hands."
             ),
         ]
         refs: list[dict[str, str]] = []
@@ -1015,6 +1017,22 @@ class Agent:
                 print(post.for_platform(platform))
                 print()
                 results[platform] = PostResult(platform=platform, ok=True, permalink="(dry-run)")
+                publish_post = self._post_for_platform(post, platform)
+                media = publish_post.media
+                self.history.record(
+                    theme=post.theme,
+                    hook=post.hook,
+                    body=post.body,
+                    platform=platform.value,
+                    ok=True,
+                    permalink="(dry-run)",
+                    error=None,
+                    media_kind=media.kind if media else None,
+                    media_local_path=media.local_path if media else None,
+                    media_public_url=media.public_url if media else None,
+                    media_prompt=media.prompt if media else None,
+                    post_text=publish_post.for_platform(platform),
+                )
                 continue
 
             poster = get_poster(

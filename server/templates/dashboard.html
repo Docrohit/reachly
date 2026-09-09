@@ -2,7 +2,8 @@
 {% block title %}Dashboard · Reachly{% endblock %}
 {% block content %}
 <h1>Reachly dashboard</h1>
-<p class="muted" style="margin-top:-8px">Configure your Hygaar-owned Reachly account, API credentials, schedule and publishing status.</p>
+<p class="muted" style="margin-top:-8px">Configure your Hygaar-owned Reachly account, API credentials, schedule and publishing status.
+  <a href="/dashboard/assets">See generated content</a></p>
 
 {% if not user.is_active %}
 <div class="card" style="border-color:var(--brand)">

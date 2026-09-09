@@ -6,6 +6,12 @@
 
 ---
 
+## Hygaar Platform Timeline
+
+Read [`docs/HYGAAR_JUL15_AUG14_2026_STABILIZATION_TIMELINE.md`](docs/HYGAAR_JUL15_AUG14_2026_STABILIZATION_TIMELINE.md) for July 15-August 14, 2026 platform context around Hygaar core backend/console stabilization. This is context only; Reachly remains isolated and this note does not authorize changes to `hdb_backend` from this repo.
+
+---
+
 ## Identity
 
 Reachly generates on-brand social posts and long-form Medium articles daily for a
@@ -155,7 +161,7 @@ Medium slots:    MEDIUM_TIMES         → 10:30, 17:30 (independent of the socia
 | File | Role |
 |---|---|
 | `reachly/agent.py` | Main harness (`run_linkedin_slot`, `run_instagram_slot`, `run_medium_slot`) |
-| `reachly/context.py` | Load goals + AGENTS.md + product_theory |
+| `reachly/context.py` | Load goals + knowledge bank + AGENTS.md + product_theory + moat/business-case docs |
 | `reachly/scheduler.py` | Staggered LinkedIn + Instagram cron jobs |
 | `reachly/platforms/linkedin.py` | API + browser posting |
 | `reachly/platforms/instagram.py` | API + browser posting (create flow selectors) |

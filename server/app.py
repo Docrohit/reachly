@@ -18,13 +18,24 @@ Routes:
 """
 from __future__ import annotations
 
+import io
 import logging
 import secrets
+import sqlite3
 import threading
+import zipfile
+from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
@@ -620,6 +631,250 @@ def run_longform_video(
 
     threading.Thread(target=_job, daemon=True).start()
     return JSONResponse({"ok": True, "message": "Long-form video job started. Refresh later for logs."})
+
+
+# ---- generated assets --------------------------------------------------
+def _user_agent_dir(user_id: int) -> Path:
+    return Path(settings.media_dir).parent / "agents" / f"user_{user_id}"
+
+
+def _resolve_user_media(data_dir: Path, raw_path: str) -> Path | None:
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    candidates = (
+        [path]
+        if path.is_absolute()
+        else [
+            Path.cwd() / path,
+            data_dir.parent / path,
+            data_dir / path,
+            data_dir / "media" / path.name,
+            Path(settings.media_dir) / path.name,
+        ]
+    )
+    roots = [data_dir.resolve(), Path(settings.media_dir).resolve()]
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if not resolved.is_file():
+            continue
+        if any(resolved == root or root in resolved.parents for root in roots):
+            return resolved
+    return None
+
+
+def _asset_hours(value: str | None) -> int:
+    try:
+        hours = int(value or "24")
+    except ValueError:
+        return 24
+    return hours if hours in (24, 48, 72, 168) else 24
+
+
+def _open_history_readonly(db: Path) -> sqlite3.Connection:
+    return sqlite3.connect(f"file:{quote(str(db), safe='/')}?mode=ro&immutable=1", uri=True)
+
+
+def _user_assets(user_id: int, *, hours: int, limit: int = 150) -> list[dict]:
+    data_dir = _user_agent_dir(user_id)
+    db = data_dir / "history.db"
+    if not db.is_file():
+        return []
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    conn = _open_history_readonly(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, created_at, theme, hook, body, platform, ok, permalink, error,
+                   media_kind, media_local_path, media_public_url, media_prompt, post_text
+            FROM posts
+            WHERE media_kind IN ('image', 'video')
+              AND (COALESCE(media_local_path, '') != '' OR COALESCE(media_public_url, '') != '')
+              AND created_at >= ?
+            ORDER BY id DESC LIMIT ?
+            """,
+            (cutoff, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+    grouped: dict[str, dict] = {}
+    for row in rows:
+        key = row["media_local_path"] or row["media_public_url"] or str(row["id"])
+        asset = grouped.setdefault(
+            key,
+            {
+                "post_id": row["id"],
+                "created_at": row["created_at"],
+                "theme": row["theme"],
+                "media_kind": row["media_kind"],
+                "media_prompt": row["media_prompt"],
+                "permalink": row["permalink"],
+                "copy_text": (row["post_text"] or "").strip()
+                or "\n\n".join(
+                    part
+                    for part in [(row["hook"] or "").strip(), (row["body"] or "").strip()]
+                    if part
+                ),
+                "platforms": {},
+                "resolved_path": None,
+                "file_size": "",
+            },
+        )
+        platform = row["platform"] or "unknown"
+        summary = asset["platforms"].setdefault(platform, {"ok": 0, "fail": 0, "error": ""})
+        if row["ok"]:
+            summary["ok"] += 1
+            if not asset["permalink"] and row["permalink"]:
+                asset["permalink"] = row["permalink"]
+        else:
+            summary["fail"] += 1
+            summary["error"] = row["error"] or summary["error"]
+        if not asset["resolved_path"]:
+            asset["resolved_path"] = _resolve_user_media(
+                data_dir, row["media_local_path"] or ""
+            )
+            if asset["resolved_path"]:
+                size = asset["resolved_path"].stat().st_size
+                asset["file_size"] = (
+                    f"{size / (1024 * 1024):.1f} MB"
+                    if size >= 1024 * 1024
+                    else f"{size / 1024:.1f} KB"
+                )
+    assets = list(grouped.values())
+    for asset in assets:
+        asset["platforms"] = [
+            {"platform": name, **info}
+            for name, info in asset["platforms"].items()
+        ]
+        asset["ok_any"] = any(p["ok"] for p in asset["platforms"])
+    return assets
+
+
+@app.get("/dashboard/assets", response_class=HTMLResponse)
+def assets_page(request: Request, hours: str = Query("24")):
+    user = require_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    asset_hours = _asset_hours(hours)
+    assets = _user_assets(user.id, hours=asset_hours)
+    images = [a for a in assets if a["media_kind"] == "image"]
+    videos = [a for a in assets if a["media_kind"] == "video"]
+    return templates.TemplateResponse(
+        request,
+        "assets.html",
+        {
+            "user": user,
+            "assets": assets,
+            "images": images,
+            "videos": videos,
+            "hours": asset_hours,
+            "image_count": len(images),
+            "video_count": len(videos),
+        },
+    )
+
+
+def _asset_row_for_user(user_id: int, post_id: int) -> dict | None:
+    data_dir = _user_agent_dir(user_id)
+    db = data_dir / "history.db"
+    if not db.is_file():
+        return None
+    conn = _open_history_readonly(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            """
+            SELECT id, created_at, theme, platform, ok, media_kind, media_local_path
+            FROM posts
+            WHERE id = ? AND media_kind IN ('image', 'video')
+            """,
+            (post_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {
+        **dict(row),
+        "data_dir": data_dir,
+        "resolved_path": _resolve_user_media(data_dir, row["media_local_path"] or ""),
+    }
+
+
+@app.get("/dashboard/assets/media/{post_id}")
+def asset_media(request: Request, post_id: int, download: bool = Query(False)):
+    user = require_user(request)
+    if not user:
+        return JSONResponse({"error": "not authenticated"}, status_code=401)
+    row = _asset_row_for_user(user.id, post_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    path = row.get("resolved_path")
+    if not path:
+        raise HTTPException(status_code=404, detail="Asset file is no longer available")
+    suffix = path.suffix.lower()
+    media_type = (
+        "video/mp4"
+        if row["media_kind"] == "video" or suffix in {".mp4", ".mov", ".webm"}
+        else "image/jpeg"
+        if suffix in {".jpg", ".jpeg"}
+        else "image/webp"
+        if suffix == ".webp"
+        else "image/png"
+    )
+    stem = "_".join(
+        part
+        for part in [
+            (row["created_at"] or "").replace(":", "").replace("-", "")[:15],
+            (row["platform"] or "asset"),
+            (row["theme"] or "reachly").replace(" ", "_")[:32],
+            str(row["id"]),
+        ]
+        if part
+    )
+    filename = f"{stem}{suffix or '.bin'}"
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        filename=filename,
+        content_disposition_type="attachment" if download else "inline",
+    )
+
+
+@app.get("/dashboard/assets/archive")
+def asset_archive(request: Request, hours: str = Query("24")):
+    user = require_user(request)
+    if not user:
+        return JSONResponse({"error": "not authenticated"}, status_code=401)
+    asset_hours = _asset_hours(hours)
+    assets = _user_assets(user.id, hours=asset_hours, limit=300)
+    buffer = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for asset in assets:
+            path = asset.get("resolved_path")
+            if path and Path(path).is_file():
+                zf.write(path, f"media/asset_{asset['post_id']}{Path(path).suffix.lower()}")
+                count += 1
+            text = (asset.get("copy_text") or "").strip()
+            if text:
+                zf.writestr(f"text/post_{asset['post_id']}.txt", text)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="No downloadable assets in this window")
+    buffer.seek(0)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="reachly_assets_last_{asset_hours}h.zip"'
+            )
+        },
+    )
 
 
 # ---- billing ----------------------------------------------------------
