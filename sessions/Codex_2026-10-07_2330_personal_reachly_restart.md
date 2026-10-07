@@ -65,3 +65,36 @@ independently. A regression test covers the original NOT NULL schema.
 GitHub branch push succeeded. PR creation was refused by the current CLI account
 and the connected integration (permissions); no PR or GitHub CI pass is claimed
 for the initial push. The test workflow now also runs on codex task branches.
+
+## Final release and end-session checks
+
+- Release code: b379b607669e92a6d066094d57586e28597952cb.
+- 185 tests and one subtest passed locally and in the staged personal-server
+  release. The original production SQLite backup was also migrated and seeded
+  twice in isolation; the second pass created no duplicate businesses.
+- GitHub CI succeeded: https://github.com/Docrohit/reachly/actions/runs/37663145785.
+- Personal deployment succeeded after a private code/configuration and SQLite
+  backup. Service reachly-saas is active; public HTTPS health reports the release
+  revision. No work-product installation was changed.
+- Council of AI (workspace 2) and Council Network (workspace 3) are under the
+  existing personal owner login. Both have source-grounded profiles and initial
+  project notes, dry-run enabled, schedules disabled, and no platform credentials.
+- Public personal login page displays reachlypersonalbot. Authenticated route
+  checks were performed with an internal owner test session; no OTP message,
+  paid model generation, or social publication was triggered.
+- GitHub code is pushed to codex/rohit-personal-reachly-sync-2026-10-07. Main has
+  not been changed. PR creation was denied by current API permissions; the owner
+  can open the comparison while signed into the personal GitHub account.
+- End-session prompt executed: reviewed changes, checked secret patterns,
+  compilation/tests/shell syntax/diff, live service and served behavior, and
+  recorded this handoff. The final documentation commit follows the tested code
+  release; its source snapshot will be synchronized without changing runtime code.
+
+## Next session
+
+Use personal Reachly's AGENTS.md and start prompt. Log in at the personal site,
+open Businesses, then choose Council of AI or Council Network. Add each project's
+AI keys and X/Instagram accounts in Settings. Review the initial facts/goals,
+generate a draft in Studio, and enable Live mode only when ready to publish.
+Automatic social metrics sync and direct SaaS2point0 API integration remain
+future work; pasted input and measured analytics entry are available now.

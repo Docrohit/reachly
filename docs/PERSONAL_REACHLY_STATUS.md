@@ -40,8 +40,9 @@ The task branch is `codex/rohit-personal-reachly-sync-2026-10-07`. GitHub CI tes
 only; pushing main does not deploy or provision external accounts. Consult the
 latest session note for the deployed revision and acceptance results.
 
-Initial requested business workspaces: Council of AI and Council Network, with
-facts taken from their local README files. They require the owner's AI provider
+Created business workspaces: Council of AI (2) and Council Network (3), with
+facts taken from their local README files. The new personal site is deployed and its authenticated workspace pages have been
+verified. The workspaces require the owner's AI provider
 and X/Instagram credentials before real generation or publication.
 
 ## Compatibility and remaining acceptance
