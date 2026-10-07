@@ -38,7 +38,7 @@
 <div class="wrap">
   <header style="margin-bottom:24px">
     <h1>Reachly <span class="pill">{{ cfg.business.name }}</span></h1>
-    <p class="muted">Content follows this business profile and its own goals. Product repository context is used only with the explicit Hygaar preset.</p>
+    <p class="muted">Content follows this business profile and its own goals. Only explicitly selected project documents are used as additional context.</p>
     {% if request.query_params.get('saved') %}<p class="ok">Settings saved.</p>{% endif %}
   </header>
 
@@ -69,7 +69,7 @@
       <div class="card">
         <h2>Context repo</h2>
         <label>Path to product repo (AGENTS, product theory, moat docs, business cases; release events use knowledge bank)</label>
-        <input name="context_repo" value="{{ dash.context_repo or cfg.context_repo or '' }}" placeholder="Only used with the Hygaar preset"/>
+        <input name="context_repo" value="{{ dash.context_repo or cfg.context_repo or '' }}" placeholder="Optional path to this business’s project repository"/>
         <p class="muted">Strategy source now: <strong>{{ strategy_source }}</strong></p>
       </div>
     </div>

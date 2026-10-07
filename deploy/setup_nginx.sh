@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# Install nginx site for Reachly dashboard (reach.hygaar.com → :8765).
-# Run on the app server: sudo bash /opt/reachly/deploy/setup_nginx.sh
+# Install an explicitly reviewed personal Reachly nginx configuration.
 set -euo pipefail
-
-CONF_SRC="/opt/reachly/deploy/nginx/reach.hygaar.com.conf"
-CONF_DST="/etc/nginx/sites-available/reach.hygaar.com.conf"
-
-if [ ! -f "$CONF_SRC" ]; then
-  echo "Missing $CONF_SRC — sync /opt/reachly first."
-  exit 1
-fi
-
-cp "$CONF_SRC" "$CONF_DST"
-ln -sf "$CONF_DST" /etc/nginx/sites-enabled/reach.hygaar.com.conf
+: "${REACHLY_NGINX_CONFIG:?Set the path to the reviewed personal nginx config}"
+test -f "$REACHLY_NGINX_CONFIG"
+cp "$REACHLY_NGINX_CONFIG" /etc/nginx/sites-available/reachly-personal
+ln -sf /etc/nginx/sites-available/reachly-personal /etc/nginx/sites-enabled/reachly-personal
 nginx -t
 systemctl reload nginx
-echo "OK: reach.hygaar.com → 127.0.0.1:8765"
-echo "Ensure DNS/ALB routes reach.hygaar.com to this host (port 80)."

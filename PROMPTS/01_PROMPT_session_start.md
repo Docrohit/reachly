@@ -1,30 +1,24 @@
-# Prompt 1: Reachly Session Start
-
-Copy-paste into an AI coding agent at the start of every Reachly session:
+# Prompt 1: Personal Reachly Session Start
 
 ```markdown
-We are working on Reachly.
+We are working on Rohit's independently owned personal Reachly.
 
-Before doing anything:
+1. Confirm the checkout is Personal/reachly and origin is Docrohit/reachly.
+2. Read AGENTS.md, product_theory.md, business_goals.md, and
+   docs/PERSONAL_REACHLY_STATUS.md.
+3. Read the latest dated personal session note in sessions/. Archived docs and
+   earlier copied handoffs are historical evidence, not current instructions.
+4. Check git status --short --branch, git remote -v, and the recent commit log.
+5. Inspect relevant source/configuration without printing secrets.
+6. Summarize the product goal, repository/branch state, verified deployment
+   locations (or unknown), platform status for LinkedIn, Instagram, X, and Medium,
+   safe changes, boundaries, and inherited behavior still awaiting separation.
 
-1. Read `AGENTS.md`.
-2. Read `product_theory.md`.
-3. Read `business_goals.md`.
-4. Read the latest file in `sessions/`.
-5. Check `git status --short`.
-6. Summarize:
-   - current product goal
-   - current deploy locations
-   - platform status for LinkedIn, Instagram, X, and Medium
-   - what is safe to change
-   - what must not be changed
-
-Rules:
-
-- Do not commit secrets or `.env`.
-- Do not modify Hygaar Django code unless explicitly requested.
-- Keep Reachly deploys isolated to Reachly paths/services.
-- For browser posting changes, verify with real page state or debug artifacts.
-- If posting live content, confirm platform/account first.
-- **Always create a branch from the latest deploy branch** (e.g., `main` or `dev-env`). NEVER branch from another feature branch — it drags in unmerged commits from other work and causes spurious conflicts. Push your branch + raise a PR; never push directly to shared env branches.
+Preserve dirty changes and the existing task branch. For new unrelated work,
+base a branch on current personal main after inspecting the copied snapshot;
+never discard it or drag unreviewed snapshot changes into an unrelated PR.
+Do not change remotes to a work repository. Keep secrets and runtime data out
+of Git. Do not run deploys, paid generation, schedulers, or live posting as
+startup checks. Only verified personal targets/accounts may be used when the
+user authorizes those actions. Local CI is test-only.
 ```

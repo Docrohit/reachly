@@ -31,7 +31,7 @@ def test_strategy_context_auto_loads_moat_and_business_cases(tmp_path):
     docs = repo / "docs"
     docs.mkdir(parents=True)
     _write_minimum_repo(repo)
-    (docs / "HYGAAR_MOAT_ARCHITECTURE_2026.md").write_text(
+    (docs / "PRODUCT_ARCHITECTURE.md").write_text(
         "Moat: satellite intelligence and fine-detail preservation.",
         encoding="utf-8",
     )
@@ -44,9 +44,9 @@ def test_strategy_context_auto_loads_moat_and_business_cases(tmp_path):
     prompt = context.for_prompt()
 
     assert context.source == "repo+supporting_docs"
-    assert "Hygaar moat architecture" in prompt
+    assert "Product architecture" in prompt
     assert "satellite intelligence" in prompt
-    assert "Hygaar business cases" in prompt
+    assert "Business cases" in prompt
     assert "Flatlay to Studio" in prompt
 
 
@@ -116,9 +116,9 @@ def test_agent_refreshes_strategy_context_before_each_post(tmp_path):
         return GeneratedPost(theme="theme", hook="hook", body="body")
 
     agent = Agent(
-        BusinessProfile(name="Hygaar", content_themes=["theme"], content_preset="hygaar"),
+        BusinessProfile(name="Personal project", content_themes=["theme"]),
         {},
-        AgentSettings(data_dir=tmp_path / "data", context_repo=str(repo)),
+        AgentSettings(data_dir=tmp_path / "data", context_repo=str(repo), allow_local_context=True),
     )
     with patch("reachly.agent.generate_post", side_effect=fake_generate_post):
         agent.build_post()

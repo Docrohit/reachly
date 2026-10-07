@@ -1,180 +1,76 @@
-# AGENTS.md — Reachly Project Constitution
+# AGENTS.md — Personal Reachly
 
-> Single source of truth for AI tools and developers working on **Reachly** —
-> an AI thought-leadership autopilot for LinkedIn, X, Instagram, and Medium.
-> Read at the start of every session.
+## Identity and ownership
 
----
+Reachly is Rohit's independently owned personal product: an AI content and
+publishing assistant for founders, creators, and businesses. Build it around
+users' own profiles, goals, brand voice, accounts, and provider credentials.
 
-## Identity
+- Canonical checkout: `/Users/rohitsharma/Desktop/M2026/Personal/reachly`.
+- Personal remote: `git@github.com:Docrohit/reachly.git`.
+- This repo's identity overrides older portfolio summaries and copied history.
+- Do not switch to another company's repository, branding, accounts, or servers.
+- Copied integrations are implementation history, not product requirements.
 
-Reachly generates on-brand social posts and long-form Medium articles daily for a
-business, optionally with AI images/video, and publishes via official APIs or
-headless browser (Playwright).
+## Start every session
 
-**Stack:** Python 3.12 / FastAPI (SaaS + dashboard) / APScheduler / Playwright /
-Gemini (text + image) / optional Hygaar media API
+Run `PROMPTS/01_PROMPT_session_start.md`: read this file, `product_theory.md`,
+`business_goals.md`, `docs/PERSONAL_REACHLY_STATUS.md`, and the latest dated
+personal session note. Inspect Git status and remotes before editing.
 
-**Product shapes:**
-1. **Standalone agent** — `.env` + `python -m reachly.runner run`
-2. **Single-tenant dashboard** — `python -m reachly.dashboard` (Hygaar today)
-3. **Multi-tenant SaaS** — `server/` with Telegram OTP (future customers)
+`docs/archive/` and older `sessions/` are historical evidence only. Do not use
+them to choose current ownership, deployment targets, credentials, or strategy.
 
-Reachly is **separate from hdb_backend**. It may *call* Hygaar APIs; it must
-**never modify** Hygaar backend code or deploy pipeline.
+## Core rules
 
----
+1. Keep work within the personal Reachly repo unless the user expands scope.
+2. Preserve existing changes and the copied snapshot. Continue the current task
+   branch when appropriate; create new task branches from current personal main
+   only after checking the diff. Never reset, pull over, or discard local work.
+3. Never commit `.env`, credentials, tokens, browser sessions, or runtime data.
+4. Keep `DRY_RUN=yes` and platforms off until the user authorizes live posting
+   for the specific account. Generation previews can still incur provider costs.
+5. Deploy only to a verified personal target with authorization. CI is test-only;
+   inherited install scripts and nginx files need review before reuse.
+6. Do not claim source support, passing tests, deployment, and successful public
+   posting as equivalent. Report each separately.
+7. Fail with useful errors and audit records. A click or internal success flag
+   alone is not evidence that a platform published the post.
+8. Keep content factual and business-neutral by default. Strategy files must
+   belong to the selected business; never auto-discover unrelated workspace docs.
 
-## Core Rules
+## Architecture
 
-| # | Rule |
-|---|---|
-| 1 | **Never modify hdb_backend** unless explicitly asked. Reachly consumes Hygaar APIs read-only. |
-| 2 | **Never commit secrets** — `.env`, passwords, OAuth tokens, dashboard tokens. |
-| 3 | **Reachly server deploy is isolated** — `/opt/reachly`, own systemd units (`reachly-agent`, `reachly-dashboard`). Do not mix with CodeDeploy hdb services. |
-| 4 | **Understand before editing** — read `product_theory.md` and trace agent → content → platform flow. |
-| 5 | **Browser mode is best-effort** — social UIs change; fail with clear errors, never crash silently. |
-| 6 | **Strategy context priority:** dashboard `goals.md` → repo `AGENTS.md` + `product_theory.md`. |
-
----
-
-## Architecture: Layer Map
+Python 3.12, FastAPI, APScheduler, Playwright, SQLModel/SQLite, and provider APIs.
 
 | Layer | Location | Responsibility |
 |---|---|---|
-| **CLI / scheduler** | `reachly/runner.py`, `reachly/scheduler.py` | Entrypoints, cron times |
-| **Agent harness** | `reachly/agent.py` | Orchestrate generate → media → post → log |
-| **Content** | `reachly/content.py` | LLM prompts, theme rotation |
-| **Strategy context** | `reachly/context.py`, `reachly/settings_store.py` | Goals + repo docs |
-| **LLM** | `reachly/llm.py` | Gemini / OpenAI / Anthropic |
-| **Media** | `reachly/media.py` | Gemini image, Hygaar client |
-| **Platforms** | `reachly/platforms/` | LinkedIn, X, Instagram, Medium (api + browser) |
-| **Storage** | `reachly/storage.py` | SQLite post history |
-| **Dashboard** | `reachly/dashboard/` | Hygaar control panel |
-| **SaaS** | `server/` | Multi-tenant product (Telegram OTP, billing) |
+| CLI and schedule | `reachly/runner.py`, `reachly/scheduler.py` | Commands and posting slots |
+| Agent | `reachly/agent.py` | Generate, attach media, publish, record outcome |
+| Content and context | `reachly/content.py`, `reachly/context.py`, `reachly/knowledge_bank.py` | Prompts and business facts |
+| Configuration | `reachly/config.py`, `reachly/settings_store.py` | Environment and dashboard settings |
+| Media | `reachly/media.py`, `reachly/longform_video.py` | Images and narration-led video |
+| Platforms | `reachly/platforms/` | Platform-specific API/browser adapters |
+| Single-user dashboard | `reachly/dashboard/` | Local controls and selected business context |
+| Hosted app | `server/` | Accounts, credential vault, schedules and billing |
+| Generation API | `server/generation_api.py`, `reachly/generation_worker.py` | Business generation jobs and assets |
 
-### Request / run lifecycle
+## Context and conventions
 
-**Staggered schedule (Hygaar default):**
+Dashboard goals and dated knowledge-bank facts guide content. Explicitly chosen
+repo docs add product facts. `REACHLY_CONTEXT_REPO` names exactly one repo;
+additional documents must be selected explicitly through `REACHLY_CONTEXT_DOCS`.
+Standalone context is explicitly enabled for the selected repo. Hosted workspaces
+use their own saved inputs and cannot select arbitrary server files.
 
-```
-LinkedIn slots:  POST_TIMES           → 09:00, 13:30, 21:00 (Asia/Kolkata)
-Instagram slots: POST_TIMES + offset → 09:05, 13:35, 21:05 (INSTAGRAM_OFFSET_MINUTES=5)
-Medium slots:    MEDIUM_TIMES         → 10:30, 17:30 (independent of the social stagger)
-```
+Use snake_case Python names and REACHLY_* for new product-specific settings.
+Keep posting logic in the agent/platform layers, not HTTP handlers. Standalone
+configuration lives in `.env`; SaaS maps database settings into agent inputs.
 
-**Each LinkedIn slot:**
+## Validation and handoff
 
-```
-1. Scheduler fires at POST_TIMES (local TZ)
-2. Agent loads BusinessProfile + StrategyContext (goals + docs)
-3. LLM generates hook + body + hashtags + image_prompt
-4. Content saved to pending_instagram_post.json
-5. Post to LinkedIn (text; image attach best-effort in browser mode)
-6. History recorded in SQLite
-```
-
-**Each Instagram slot (N minutes later):**
-
-```
-1. Scheduler fires at offset time
-2. Load pending post from pending_instagram_post.json (or generate fresh if missing)
-3. Gemini generates image from image_prompt (ATTACH_IMAGE=yes)
-4. Post image + caption to Instagram (browser or Graph API)
-5. History recorded in SQLite
-```
-
-**Each Medium slot (independent):**
-
-```
-1. Scheduler fires at MEDIUM_TIMES (local TZ)
-2. Agent.build_medium_article() → LLM writes title + subtitle + 850–1300 word body + tags
-3. Generate a required 16:9 image (fails the slot if image generation fails)
-4. Post to Medium via browser (persistent session) as draft or public (MEDIUM_PUBLISH_STATUS)
-5. History recorded in SQLite; de-dupes against recent article openings
-```
-
-**One-shot (`runner once`):** generates content, attaches image if Instagram enabled, posts all enabled platforms in one run. Medium runs on its own slots (or `runner medium` to test).
-
----
-
-## Conventions
-
-### Naming
-- Python: `snake_case` files and functions
-- Env vars: `SCREAMING_SNAKE` (Reachly-specific: `REACHLY_*` prefix)
-- Dashboard data: `.reachly_data/goals.md`, `dashboard_settings.json`
-
-### Configuration
-- Standalone: `.env` at install root (`/opt/reachly/.env` on server)
-- Never log credential values
-- `DRY_RUN=yes` until user confirms live posting
-
-### Posting modes
-- `thought_leader` — insights first, soft brand tie-in
-- `brand_promoter` — educate market on product capabilities
-
-### Platform modes
-- `api` — official APIs (preferred on servers when tokens available)
-- `browser` — Playwright persistent session in `.reachly_data/browser_sessions/`
-- `off` — skip platform
-
----
-
-## Hygaar-specific defaults
-
-| Setting | Value |
-|---|---|
-| Context repo | `/var/www/html/dev-env/hdb_backend` |
-| Post times (LinkedIn) | 09:00, 13:30, 21:00 Asia/Kolkata |
-| Instagram offset | 5 min → 09:05, 13:35, 21:05 |
-| Medium times | 10:30, 17:30 Asia/Kolkata (independent slots) |
-| LinkedIn | browser mode, `LINKEDIN_POST_AS="HyGaar"` configured for company page; verify after UI changes |
-| Instagram | browser mode, `@hygaar.studios` — image from Gemini prompt |
-| Medium | browser mode, publishing **public** long-form articles with a 16:9 image |
-| X / Twitter | browser mode configured for `@hygaarstudios`; server login currently limited by X checkpoint |
-| Image gen | Gemini (`ATTACH_IMAGE=yes`; images generated at Instagram slot) |
-| Posting style | `brand_promoter` |
-
----
-
-## Forbidden Patterns
-
-| Pattern | Why | Instead |
-|---|---|---|
-| Editing hdb_backend for Reachly features | Breaks deploy rules | Call Hygaar API or extend Reachly only |
-| Storing passwords in git | Security | `.env` + encrypted vault (SaaS) |
-| Silent `except: pass` on post failures | Ops blindness | Log + record in history.db |
-| Hardcoded LinkedIn `#username` selector only | UI changed | Multiple selectors + visible-field check |
-| Assuming free X API tier | Deprecated 2026 | Document pay-per-use or browser mode |
-
----
-
-## Key Files
-
-| File | Role |
-|---|---|
-| `reachly/agent.py` | Main harness (`run_linkedin_slot`, `run_instagram_slot`, `run_medium_slot`) |
-| `reachly/context.py` | Load goals + AGENTS.md + product_theory |
-| `reachly/scheduler.py` | Staggered LinkedIn + Instagram cron jobs |
-| `reachly/platforms/linkedin.py` | API + browser posting |
-| `reachly/platforms/instagram.py` | API + browser posting (create flow selectors) |
-| `reachly/platforms/medium.py` | Browser posting of long-form articles (16:9 image, draft/public) |
-| `reachly/dashboard/app.py` | Hygaar dashboard |
-| `deploy/install_on_server.sh` | Server bootstrap |
-| `deploy/nginx/reach.hygaar.com.conf` | Public dashboard proxy |
-| `business_goals.md` | Business strategy source of truth for Reachly itself |
-| `PROMPTS/` | Reusable session/start/end/deploy prompts |
-| `sessions/` | Session handoffs and operational history |
-
----
-
-## Decision Checklist (before every edit)
-
-```
-□ Does this touch hdb_backend? (should be NO)
-□ Are secrets out of git and session docs?
-□ Does browser code degrade gracefully on UI changes?
-□ Is strategy context (goals → docs) still correct priority?
-□ Did I test preview / once / instagram on server before enabling live schedule?
-```
+Run relevant tests for behavior changes, `git diff --check`, and compilation when
+Python changes. Use `.venv/bin/python` for this checkout. Do not run live social
+commands, provider probes, deploy scripts, or migrations as session-start checks.
+Record what changed, what was verified, and outstanding work in `sessions/`.
+Use `docs/RELEASE_RUNBOOK.md` for release planning.

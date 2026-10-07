@@ -1,3 +1,6 @@
+> Historical copied documentation. Not an active personal Reachly plan,
+> deployment runbook, or authorization. See ../PERSONAL_REACHLY_STATUS.md.
+
 # Human Teleprompter Script Generation
 
 POST /api/v1/generation-jobs uses existing service authentication, organisation
@@ -17,7 +20,7 @@ operation=teleprompter_script, count=1 and script_options:
 source can also be surprise; the worker chooses a context-grounded topic in that
 case. The normal business, business_id, organisation binding, source_version and
 public_facts contract remains. Research and GEO evidence follow existing policy.
-the client application resolves saved topic IDs; Reachly receives the authorized title as data.
+Hyclinics resolves saved topic IDs; Reachly receives the authorized title as data.
 The new operation rejects original media, static creative briefs and multiple
 outputs. Absent script_options is omitted when serializing older operations,
 preserving existing v1/v2 request digests and replay semantics.
@@ -63,7 +66,7 @@ but does not execute that pipeline. No ElevenLabs, voice cloning, audio capture,
 image/logo rendering, video generation or publishing is invoked. Credentials are
 resolved from the existing operator-provisioned provider profile, not request data.
 
-Deploy Reachly before the the client application consumer. Tests cover contract validation,
+Deploy Reachly before the Hyclinics consumer. Tests cover contract validation,
 text-only dispatch, malformed cues, sources, estimated duration and legacy payload
 compatibility. Local cross-product browser QA uses deterministic LLM fixtures;
 real provider quality and post-deploy acceptance remain separate gates.

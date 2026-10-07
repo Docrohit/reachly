@@ -11,15 +11,15 @@ Collect:
 - ICP and business goals
 - Brand voice and forbidden claims
 - Posting style: `thought_leader` or `brand_promoter`
-- Platforms: LinkedIn, Instagram, X
+- Platforms: LinkedIn, Instagram, X, Medium, YouTube
 - API mode or browser mode per platform
-- Media provider: Gemini, Hygaar, none
+- Media provider: Gemini images, optional Seedance video, or none
 - Schedule and timezone
 - Context repo or uploaded docs
 
 Create/update:
 
-- `business_goals.md` or dashboard goals
+- Per-business dashboard goals (keep repo business_goals.md for Reachly itself)
 - platform credentials in `.env` or encrypted vault
 - `REACHLY_CONTEXT_REPO` if using repo docs
 - `POST_TIMES`, `INSTAGRAM_OFFSET_MINUTES`, timezone

@@ -28,6 +28,8 @@ class HygaarAuthError(Exception):
 
 def login_with_hygaar(email: str, password: str) -> HygaarLoginResult:
     settings = get_settings()
+    if not settings.legacy_auth_enabled or not settings.hygaar_api_base_url:
+        raise HygaarAuthError("External sign-in is not configured.")
     login_url = urljoin(f"{settings.hygaar_api_base_url}/", settings.hygaar_login_path.lstrip("/"))
     try:
         response = requests.post(

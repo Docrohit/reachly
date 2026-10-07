@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Businesses · Reachly{% endblock %}
+{% block content %}
+<h1>Your businesses and projects</h1><p class="muted">One Reachly login. Separate business information, provider keys, connected accounts, drafts, and results for every project.</p>
+<div class="grid cols2">{% for workspace in workspaces %}<div class="card"><h2>{{ workspace.name }}</h2><p>{{ workspace.website or 'Ready for setup' }}</p><form method="post" action="/workspaces/{{ workspace.id }}/switch"><button class="btn {{ 'primary' if user.id == workspace.id }}" type="submit">{{ 'Open current workspace' if user.id == workspace.id else 'Switch to this business' }}</button></form></div>{% endfor %}</div>
+<div class="card"><h2>Add a business or project</h2><form action="/workspaces" method="post"><label>Name</label><input name="name" maxlength="160" required/><label>Website</label><input name="website" type="url" placeholder="https://your-project.example"/><button class="btn primary" type="submit">Create workspace</button></form></div>
+{% endblock %}

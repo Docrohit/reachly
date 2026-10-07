@@ -1,4 +1,4 @@
-"""Single-tenant Reachly dashboard (Hygaar-first).
+"""Single-tenant Reachly dashboard (personal and business profiles).
 
 Edit goals, posting style, schedule; preview strategy sources; trigger posts.
 Protected by REACHLY_DASHBOARD_TOKEN (query ?token= or header X-Reachly-Token).
@@ -45,7 +45,7 @@ _app: FastAPI | None = None
 def _get_cfg() -> AgentConfig:
     global _cfg
     if _cfg is None:
-        env_path = os.environ.get("REACHLY_ENV", "/opt/reachly/.env")
+        env_path = os.environ.get("REACHLY_ENV", ".env")
         _cfg = AgentConfig.from_env_file(env_path)
     return _cfg
 
@@ -84,21 +84,16 @@ def create_app() -> FastAPI:
         asset_hours = _asset_hours(request.query_params.get("assets"))
         dash = load_dashboard_settings(cfg.data_dir)
         goals = load_goals(cfg.data_dir)
-        strategy = load_strategy_context(
-            data_dir=cfg.data_dir,
-            context_repo=(dash.get("context_repo") or cfg.context_repo) if cfg.business.content_preset == "hygaar" else None,
-            agents_path=cfg.agents_md_path if cfg.business.content_preset == "hygaar" else None,
-            product_theory_path=cfg.product_theory_path if cfg.business.content_preset == "hygaar" else None,
-            posting_style=dash.get("posting_style", "thought_leader"),
-        )
-        if cfg.business.content_preset != "hygaar":
-            owned = dash.get("brand", {}).get("owner") == cfg.business.name
-            strategy = StrategyContext(source="business", goals_text=goals if owned else "")
+        preview_agent = Agent.from_config(cfg)
+        try:
+            strategy = preview_agent._load_strategy_context()
+        finally:
+            preview_agent.close()
         logs = _recent_logs(cfg.data_dir)
         assets = _recent_assets(cfg, hours=asset_hours)
         return templates.TemplateResponse(
             request,
-            "hygaar.html",
+            "dashboard.html",
             {
                 "cfg": cfg,
                 "dash": dash,

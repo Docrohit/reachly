@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Studio · Reachly{% endblock %}
+{% block content %}
+<h1>Your content studio</h1>
+<p class="muted">Research → generate → review → publish → learn. For any project, business, or service.</p>
+{% if not profile %}
+<div class="card"><h2>Start with your project</h2><p>Add its name, website, audience, goals, and your AI provider keys.</p><a class="btn primary" href="/dashboard">Set up a project</a></div>
+{% else %}
+<div class="card"><h2>{{ profile.name }}</h2><p>{{ profile.website or profile.sector or 'Your active project' }}</p><a href="/dashboard">Edit business and connected accounts</a></div>
+<div class="card"><h2>Inputs that ground your content</h2>
+<form method="post" action="/studio/inputs">
+<label>Project information, product facts, or SaaS2point0 output</label><textarea name="project_notes" maxlength="30000" rows="7" placeholder="Paste your project brief, positioning, audience research, services, features, or planning output here.">{{ project_notes }}</textarea>
+<label>Research and source links</label><textarea name="research_notes" maxlength="30000" rows="7" placeholder="Paste research with source URLs and dates, or run online research below.">{{ research_notes }}</textarea>
+<label>Post analytics and lessons</label><textarea name="performance_notes" maxlength="30000" rows="5" placeholder="Paste measured results: platform, post, date range, impressions, clicks, reactions, and what worked. Avoid guesses.">{{ performance_notes }}</textarea>
+<button class="btn primary" type="submit">Save inputs</button>
+</form>
+<form action="/studio/research" method="post" style="margin-top:18px"><p class="muted">Online research uses your saved business profile and Gemini key, then saves findings with source links. Provider charges may apply.</p><button class="btn" type="submit">Research this business online</button></form>
+</div>
+<div class="card"><h2>Generate a draft</h2><p class="muted">Uses your saved business, project inputs, research, and performance feedback. Generation does not publish. Provider charges may apply.</p>
+<form action="/studio/generate" method="post"><label>Topic or direction</label><input name="topic" maxlength="500" placeholder="Optional: leave blank to use your content themes"/>
+<label><input type="checkbox" name="with_image" value="on"/> Generate an image with the draft</label><button class="btn primary" type="submit">Generate draft</button></form></div>
+{% endif %}
+<h2>Recent drafts</h2>
+{% for item in drafts %}{% set d = item.row %}{% set p = item.post %}
+<div class="card"><span class="pill">{{ d.state.replace('_',' ') }}</span><h2>{{ p.hook }}</h2><p style="white-space:pre-wrap">{{ p.body }}</p><p>{{ p.hashtags | join(' ') }}</p><p>{{ p.link or '' }}</p>
+{% if p.media %}<img src="/studio/{{ d.id }}/media" alt="Generated draft image" style="max-width:100%;max-height:440px;border-radius:12px"/>{% endif %}
+{% if d.state == 'draft' %}<form action="/studio/{{ d.id }}/publish" method="post" style="margin-top:16px"><label>Publish through your connected account</label><select name="platform"><option value="linkedin">LinkedIn</option><option value="twitter">X</option><option value="instagram">Instagram</option></select>
+<label><input type="checkbox" name="confirm" value="publish" required/> I reviewed this draft and want it published to the selected connected account.</label><button class="btn" type="submit">Publish this draft</button><p class="muted">Requires Live mode in Settings. Each draft has one publishing attempt; outcomes needing verification are never automatically retried.</p></form>{% else %}<p>{{ d.result or 'Publishing in progress. Check the platform before any retry.' }}</p>{% endif %}</div>
+{% else %}<p class="muted">No drafts yet. Save your inputs and generate the first one.</p>{% endfor %}
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('form').forEach(form=>form.addEventListener('submit',()=>{const b=form.querySelector('button[type="submit"]');if(b){b.disabled=true;b.textContent='Working…';}}));</script>{% endblock %}

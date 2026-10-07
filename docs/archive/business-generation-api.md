@@ -1,3 +1,6 @@
+> Historical copied documentation. Not an active personal Reachly plan,
+> deployment runbook, or authorization. See ../PERSONAL_REACHLY_STATUS.md.
+
 # Business generation API — 29 September 2026
 
 Reachly generates strategy, copy, image prompts and PNG images. The caller owns
@@ -10,7 +13,7 @@ approval and publishing. These endpoints never invoke the standalone posting loo
 - `GET /api/v1/generation-jobs/{job_id}`: scoped status, candidates, warnings,
   source version, model names and evidence provenance.
 - `GET /api/v1/generation-jobs/{job_id}/assets/{candidate_id}`: authenticated PNG.
-  the client application verifies the SHA-256 before importing an immutable version.
+  Hyclinics verifies the SHA-256 before importing an immutable version.
 
 Inputs: schema version 1, permanent `business_id`, `source_version`, BusinessProfile,
 `public_facts`, `brand` (hex colours, visual theme, optional PNG/JPEG base64 logo),
@@ -20,7 +23,7 @@ count 1–5 and recent hooks. No server file paths or model secrets in requests.
 scoped GEO and research evidence. Each evidence object carries `business_id`,
 `captured_at`, source URLs and findings. GEO must match the business website.
 Evidence older than 30 days or without timezone/source information is rejected.
-the client application omits unusable audits; Reachly then records a missing-audit warning.
+Hyclinics omits unusable audits; Reachly then records a missing-audit warning.
 
 Enhanced requests can request online research. One grounded search call per
 uncached job, capped at 3,000 output tokens; successful research is cached for
@@ -31,7 +34,7 @@ are treated as authorised merely because a research source mentions them.
 Revisions use `count: 1`, `revision_mode: copy|image|both`, feedback, and
 `original: {job_id, candidate_id}`. The original must be complete and owned by
 the same client/business. Copy-only preserves its image; image-only preserves
-the current copy supplied by the client application. the client application checks the expected revision
+the current copy supplied by Hyclinics. Hyclinics checks the expected revision
 again before import and resets both approvals after a successful revision.
 
 ## Content Factory v2 (local implementation, 3 October 2026)
@@ -53,12 +56,12 @@ The result has three `ideas` containing `title`, `reason`, editable `script` and
 fail validation. Scripts request 130-180 words for a 60-90 second target; speaking
 duration and factual quality require real-provider review. Ideas do not invoke
 image generation. Enhanced research may still incur its normal cached search call.
-the client application caches the suggestions, queues refreshes explicitly and caps them at two
+Hyclinics caches the suggestions, queues refreshes explicitly and caps them at two
 per clinic per hour. Opening a page does not generate a new paid request.
 
 This increment does not extract uploaded documents, transcribe real recordings,
 rank GEO findings, change the research algorithm, or publish new media formats.
-Uploaded material remains within the client application's manual production workflow.
+Uploaded material remains within Hyclinics's manual production workflow.
 
 ## Credential ownership and activation
 
@@ -67,19 +70,19 @@ Set `REACHLY_GENERATION_CONFIG` to a protected JSON file outside the checkout:
 ```json
 {
   "clients": {
-    "client_app": {
-      "token_env": "CLIENT_REACHLY_SERVICE_TOKEN",
+    "hyclinics": {
+      "token_env": "HYCLINICS_REACHLY_SERVICE_TOKEN",
       "business_ids": ["HYC-REPLACE_WITH_REAL_CLINIC_ID"],
-      "provider": "client_owned",
+      "provider": "hyclinics_owned",
       "max_hourly_jobs": 20
     }
   },
   "providers": {
-    "client_owned": {
+    "hyclinics_owned": {
       "llm_provider": "gemini",
       "llm_model": "gemini-2.5-flash",
       "image_model": "gemini-3.1-flash-image",
-      "gemini_api_key_env": "CLIENT_GEMINI_API_KEY"
+      "gemini_api_key_env": "HYCLINICS_GEMINI_API_KEY"
     },
     "reachly_owned": {
       "llm_provider": "openai",
@@ -94,10 +97,10 @@ Set `REACHLY_GENERATION_CONFIG` to a protected JSON file outside the checkout:
 
 Names above are examples; operators select available approved models and provision
 keys through the normal secret-management process. A remote Reachly process cannot
-read the client application's environment: provision the selected credential in the worker's
+read Hyclinics's environment: provision the selected credential in the worker's
 environment. Sharing a credential profile never shares logos, facts or history.
 Without organisation provisioning, provision each allowed clinic ID explicitly.
-For the client application integration use the organisation API described below instead.
+For the Hyclinics integration use the organisation API described below instead.
 Do not use wildcard business scopes.
 
 API and generation worker share `REACHLY_GENERATION_DATA`, a private persistent
@@ -122,8 +125,10 @@ theme. The shared post/article/image prompts use the business sector. Missing lo
 means no logo. The hosted dashboard no longer accepts arbitrary server logo paths.
 
 The generic mode does not discover product repositories. Hosted businesses get
-separate context/history directories. Operator-global knowledge is not loaded for business generation.
-Old environment-logo inheritance is removed. For standalone environment branding, `BRAND_OWNER` must match
+separate context/history directories. Global Hygaar knowledge requires both an
+eligible Hygaar identity and the explicit Hygaar business preset. Existing Hygaar
+operators must select that preset deliberately; old environment-logo inheritance
+is removed. For standalone environment branding, `BRAND_OWNER` must match
 `BUSINESS_NAME`. Use a separate `DATA_DIR` and social-account configuration per
 standalone business; changing brand identity does not rebind publishing accounts.
 
@@ -136,7 +141,7 @@ alternatives. Pass `content_type` (for example `awareness`) and an optional `top
 A supplied topic bypasses the planning call; otherwise Reachly plans one shared
 topic. Both candidates retain that topic while varying copy openings and visual
 composition. The ordinary `distinct_posts` default remains backward compatible.
-Requests for more than two daily alternatives are rejected. the client application owns the
+Requests for more than two daily alternatives are rejected. Hyclinics owns the
 clinic-local daily initial allowance, explicit extra regeneration tracking, version
 history and selection/approval. This per-request bound is not a ban on extra
 Ops-requested regeneration. No publishing happens in the generation API.
@@ -155,7 +160,7 @@ These tests are not live model or social-platform acceptance. Real-provider outp
 deployed worker health and an explicitly authorised destination post remain release
 acceptance steps. Browser publishing is unchanged and separately approved.
 
-## Organisation provisioning from the client application
+## Organisation provisioning from Hyclinics
 
 `POST /api/v1/generation-jobs/organisations` accepts only:
 
@@ -167,7 +172,7 @@ It uses the same server-to-server `X-Reachly-Client` and Bearer credential as
 content generation. In addition, the configured client must have the boolean
 `organisation_provisioning: true`. This capability defaults to disabled. It is
 not a browser API and accepts no provider credentials, pack, organisation name,
-URLs or arbitrary configuration. IDs must match the permanent the client application format.
+URLs or arbitrary configuration. IDs must match the permanent Hyclinics format.
 The bounded request is idempotent and returns the ID and `state: registered`.
 Registration itself creates no generation job or provider call.
 
@@ -180,20 +185,23 @@ scoped by client and clinic. An unrelated service client cannot register an
 organisation without the capability, or read another client's jobs/assets.
 Disabling the capability revokes access through these dynamic organisation grants.
 
-The trusted client application backend must resolve organisation and clinic from its own
+The trusted Hyclinics backend must resolve organisation and clinic from its own
 registry and require Ops before calling these APIs. Reachly trusts that service's
 attestation of membership; knowledge of an ID is not sufficient without the
 server credential. Do not expose that credential to organisation/clinic users.
 All clinic packs support social generation; pack-specific prompts remain the
-responsibility of the client application.
+responsibility of Hyclinics.
 
 ### Rollout order
 
-1. Release Reachly to the selected personal target using `RELEASE_RUNBOOK.md`.
-   CI runs tests only; there is no automatic provisioning step.
-   Configure the selected client explicitly; do not run archived provisioning commands.
-
-2. Merge/deploy the client application integration. Before submitting a new generation
+1. Merge and deploy Reachly first. In the existing `deploy.yml` manual workflow,
+   use `deploy=true`, `target=saas`, `enable_organisation_provisioning=true`.
+   The reviewed helper enables only the existing `hyclinics` client, verifies its
+   configured credential/provider, backs up the configuration privately, and
+   preserves file ownership and permissions. It creates no new credentials and
+   changes no standalone-agent configuration. Subsequent deployments can omit
+   this one-time input; the protected runtime configuration is retained.
+2. Merge/deploy the Hyclinics integration. Before submitting a new generation
    job, its worker idempotently registers the saved organisation, using only the
    saved clinic's organisation ID. Temporary network/5xx errors retry the same
    durable request; no paid generation starts before registration succeeds.
@@ -220,7 +228,7 @@ When present it is added to planning, copy, idea and script context as
 `performance_signals` with fixed guidance: favour patterns of higher-engagement posts,
 avoid patterns shared by the lowest performers, keep roughly one angle in three
 exploratory, never reuse past hooks and never treat results as evidence for a claim.
-Results report `performance_used` (measured post count). the client application sends only
+Results report `performance_used` (measured post count). Hyclinics sends only
 aggregate counters and public post copy; comment text and audience data are excluded.
 
 ## Clinic contributions (5 October 2026)

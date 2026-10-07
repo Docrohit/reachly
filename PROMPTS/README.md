@@ -14,4 +14,7 @@ Always read:
 - `AGENTS.md`
 - `product_theory.md`
 - `business_goals.md`
-- latest file in `sessions/`
+- `docs/PERSONAL_REACHLY_STATUS.md`
+- latest dated personal handoff in `sessions/`
+
+Historical notes and `docs/archive/` do not define the current product or deploy target.

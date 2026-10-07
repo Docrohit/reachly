@@ -5,7 +5,7 @@
 <div class="grid cols2">
   <div class="card">
     <h2>Reachly Pro</h2>
-    <p class="muted">Hygaar-managed publishing for teams that want daily social and long-form content without manual operations.</p>
+    <p class="muted">Publishing automation for teams that want daily social and long-form content without manual operations.</p>
     <ul class="muted">
       <li>Live posting to LinkedIn, X, Instagram and Medium</li>
       <li>API-first platform credentials with browser fallback</li>
@@ -22,14 +22,11 @@
   </div>
   <div class="card">
     <h2>How billing works</h2>
-    <p class="muted">Reachly billing is separate from Hygaar media-generation credits.
+    <p class="muted">Reachly subscriptions and AI provider usage are billed separately.
       A Reachly subscription controls publishing automation, schedules, account setup
-      and the hosted dashboard. Hygaar media APIs may still charge credits when selected
-      as the image or video provider.</p>
+      and the hosted dashboard. Your chosen AI providers bill usage to your own account.</p>
     {% if not settings.stripe_secret_key %}
-    <p class="err">Billing is not configured on this server yet. Set
-      <code>REACHLY_STRIPE_*</code> or add approved Hygaar emails to
-      <code>REACHLY_HYGAAR_PRO_EMAILS</code>.</p>
+    <p class="err">Billing is not available yet. Please contact the Reachly operator for access.</p>
     {% endif %}
   </div>
 </div>

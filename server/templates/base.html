@@ -16,7 +16,7 @@
       color:var(--text);line-height:1.55}
     a{color:var(--brand);text-decoration:none}
     .wrap{max-width:1040px;margin:0 auto;padding:24px}
-    nav{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;
+    nav{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:18px 24px;
       border-bottom:1px solid var(--border);position:sticky;top:0;backdrop-filter:blur(8px);
       background:rgba(255,255,255,.82);z-index:10}
     .logo{font-weight:800;font-size:20px}
@@ -56,7 +56,11 @@
     <a class="logo" href="/">Reach<span>ly</span></a>
     <div class="row" style="gap:10px">
       {% if user %}
-        <a class="btn ghost" href="/dashboard">Dashboard</a>
+        <a class="btn ghost" href="/workspaces">Businesses</a>
+        <a class="btn ghost" href="/studio">Studio</a>
+        <a class="btn ghost" href="/dashboard/assets">Assets</a>
+        <a class="btn ghost" href="/analytics">Analytics</a>
+        <a class="btn ghost" href="/dashboard">Settings</a>
         <a class="btn ghost" href="/profile">Profile</a>
         <a class="btn ghost" href="/billing">Billing</a>
         <a class="btn ghost" href="/logout">Log out</a>
@@ -69,7 +73,7 @@
   <div class="wrap">
     {% block content %}{% endblock %}
   </div>
-  <footer>Reachly by Hygaar - AI publishing for LinkedIn, X, Instagram and Medium</footer>
+  <footer>Reachly - AI publishing for LinkedIn, X, Instagram and Medium</footer>
   {% block scripts %}{% endblock %}
 </body>
 </html>

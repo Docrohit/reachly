@@ -13,7 +13,7 @@
 ## Safety Checks
 
 - [ ] No `.env`, browser sessions, tokens, passwords, API keys, or deploy keys committed
-- [ ] No Hygaar Django or console code changed unless explicitly approved
+- [ ] Changes are confined to personal Reachly; personal remote and target verified
 - [ ] Platform live-posting behavior was kept in dry-run or explicitly verified
 - [ ] Runtime data is preserved by deploy changes (`.env`, `.venv`, `.reachly_data`, `reachly_media`, `*.db`)
 

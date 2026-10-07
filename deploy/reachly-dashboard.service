@@ -1,5 +1,5 @@
 [Unit]
-Description=Reachly Hygaar dashboard
+Description=Reachly personal dashboard
 After=network-online.target
 
 [Service]

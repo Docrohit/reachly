@@ -2,7 +2,7 @@
 
 Routes:
   /                       landing page
-  /login                  Hygaar console login, plus optional legacy Telegram OTP
+  /login                  Personal Reachly Telegram OTP
   /auth/send-code         POST -> sends OTP via Telegram bot
   /auth/verify            POST -> verifies OTP, starts session
   /dashboard              the user's control panel
@@ -18,13 +18,18 @@ Routes:
 """
 from __future__ import annotations
 
+import io
+import sqlite3
+import zipfile
+from datetime import datetime, timedelta
+from urllib.parse import quote
 import logging
 import secrets
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Form, Request, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
@@ -60,6 +65,10 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="Reachly")
 from .generation_api import router as generation_router
 app.include_router(generation_router)
+from .studio import router as studio_router
+app.include_router(studio_router)
+from .workspaces import router as workspace_router
+app.include_router(workspace_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
 media_path = Path(settings.media_dir)
@@ -81,7 +90,14 @@ def current_user(request: Request) -> User | None:
     if not uid:
         return None
     with get_session() as session:
-        return session.get(User, uid)
+        owner = session.get(User, uid)
+        if not owner or owner.owner_user_id is not None:
+            return None
+        selected = request.session.get("workspace_id", owner.id)
+        user = session.get(User, selected)
+        if user and (user.id == owner.id or user.owner_user_id == owner.id):
+            return user
+        return owner
 
 
 def require_user(request: Request) -> User | None:
@@ -147,7 +163,8 @@ def landing(request: Request):
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    revision = BASE_DIR.parent / "REVISION"
+    return {"ok": True, "revision": revision.read_text().strip() if revision.is_file() else "development"}
 
 
 @app.post("/internal/knowledge-events")
@@ -189,6 +206,8 @@ def login_page(request: Request):
 
 @app.post("/auth/hygaar/login")
 def hygaar_login(request: Request, email: str = Form(...), password: str = Form(...)):
+    if not settings.legacy_auth_enabled:
+        return JSONResponse({"error": "This sign-in method is unavailable."}, status_code=404)
     try:
         result = login_with_hygaar(email, password)
     except HygaarAuthError as exc:
@@ -245,9 +264,10 @@ def verify(request: Request, handle: str = Form(...), code: str = Form(...)):
             },
             status_code=401,
         )
+    request.session.clear()
     request.session["user_id"] = user_id
     request.session["auth_provider"] = "telegram"
-    return RedirectResponse("/dashboard", status_code=303)
+    return RedirectResponse("/workspaces", status_code=303)
 
 
 @app.get("/logout")
@@ -417,6 +437,15 @@ def save_profile(
         ).first()
         if not row:
             row = BusinessProfileRow(user_id=user.id)
+        business_changed = bool(row.id and (row.name != name or (row.website or "") != website))
+        if business_changed:
+            current = session.get(User, user.id)
+            current.dry_run = True
+            current.scheduler_enabled = False
+            session.add(current)
+            for connection in session.exec(select(PlatformCredRow).where(PlatformCredRow.user_id == user.id)).all():
+                connection.mode = "off"
+                session.add(connection)
         row.name, row.website, row.sector = name, website or None, sector or None
         row.vision, row.product_info = vision or None, product_info or None
         row.brand_voice = brand_voice
@@ -433,6 +462,9 @@ def save_profile(
         if row.providers_vault:
             from .crypto import decrypt_dict
             existing = decrypt_dict(row.providers_vault)
+        if business_changed:
+            for key in ("project_notes", "research_notes", "performance_notes"):
+                existing.pop(key, None)
         existing.update(providers)
         from reachly.business_brand import logo_file, palette
         try:
@@ -443,7 +475,7 @@ def save_profile(
             raise HTTPException(422, "Provide a valid PNG/JPEG logo and hex brand colours")
         existing["brand_theme"] = brand_theme[:2000]
         existing["brand_colors"] = ",".join(colors)
-        existing["content_preset"] = "hygaar" if content_preset == "hygaar" and name.strip().casefold() == "hygaar" else "business"
+        existing["content_preset"] = "business"
         if remove_brand_logo or existing.get("brand_owner", "").casefold() != name.strip().casefold():
             existing.pop("brand_logo_path", None)
         if own_logo:
@@ -557,7 +589,8 @@ def save_settings(
     longform_video_times: str = Form("11:30,17:30"),
     timezone: str = Form("UTC"),
     attach_image: str = Form("on"),
-    dry_run: str = Form("off"),
+    dry_run: str = Form("on"),
+    scheduler_enabled: str = Form("off"),
     enable_engagement: str = Form("off"),
     engagement_delay_minutes: int = Form(30),
     engagement_max_comments: int = Form(3),
@@ -570,6 +603,7 @@ def save_settings(
         cleaned_post_times = ",".join(_parse_time_list(post_times)) or post_time
         cleaned_medium_times = ",".join(_parse_time_list(medium_times))
         cleaned_longform_video_times = ",".join(_parse_time_list(longform_video_times))
+        u.scheduler_enabled = scheduler_enabled == "on"
         u.post_time = post_time
         u.post_times = cleaned_post_times
         u.instagram_offset_minutes = max(0, min(240, instagram_offset_minutes))
@@ -642,6 +676,257 @@ def run_longform_video(
 
     threading.Thread(target=_job, daemon=True).start()
     return JSONResponse({"ok": True, "message": "Long-form video job started. Refresh later for logs."})
+
+
+# ---- generated assets --------------------------------------------------
+def _user_agent_dir(user_id: int) -> Path:
+    import hashlib
+    with get_session() as session:
+        profile = session.exec(select(BusinessProfileRow).where(BusinessProfileRow.user_id == user_id)).first()
+    root = Path(settings.media_dir).parent / "agents" / f"user_{user_id}"
+    if profile:
+        identity = hashlib.sha256((profile.name + "|" + (profile.website or "")).encode()).hexdigest()[:16]
+        return root / identity
+    return root
+
+
+def _resolve_user_media(data_dir: Path, raw_path: str) -> Path | None:
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    candidates = (
+        [path]
+        if path.is_absolute()
+        else [
+            Path.cwd() / path,
+            data_dir.parent / path,
+            data_dir / path,
+            data_dir / "media" / path.name,
+            Path(settings.media_dir) / path.name,
+        ]
+    )
+    roots = [data_dir.resolve(), (Path(settings.media_dir) / data_dir.parent.name / data_dir.name).resolve()]
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if not resolved.is_file():
+            continue
+        if any(resolved == root or root in resolved.parents for root in roots):
+            return resolved
+    return None
+
+
+def _asset_hours(value: str | None) -> int:
+    try:
+        hours = int(value or "24")
+    except ValueError:
+        return 24
+    return hours if hours in (24, 48, 72, 168) else 24
+
+
+def _open_history_readonly(db: Path) -> sqlite3.Connection:
+    return sqlite3.connect(f"file:{quote(str(db), safe='/')}?mode=ro", uri=True)
+
+
+def _user_assets(user_id: int, *, hours: int, limit: int = 150) -> list[dict]:
+    data_dir = _user_agent_dir(user_id)
+    db = data_dir / "history.db"
+    if not db.is_file():
+        return []
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    conn = _open_history_readonly(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, created_at, theme, hook, body, platform, ok, permalink, error,
+                   media_kind, media_local_path, media_public_url, media_prompt, post_text
+            FROM posts
+            WHERE media_kind IN ('image', 'video')
+              AND (COALESCE(media_local_path, '') != '' OR COALESCE(media_public_url, '') != '')
+              AND created_at >= ?
+            ORDER BY id DESC LIMIT ?
+            """,
+            (cutoff, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+    grouped: dict[str, dict] = {}
+    for row in rows:
+        key = row["media_local_path"] or row["media_public_url"] or str(row["id"])
+        asset = grouped.setdefault(
+            key,
+            {
+                "post_id": row["id"],
+                "created_at": row["created_at"],
+                "theme": row["theme"],
+                "media_kind": row["media_kind"],
+                "media_prompt": row["media_prompt"],
+                "permalink": row["permalink"],
+                "copy_text": (row["post_text"] or "").strip()
+                or "\n\n".join(
+                    part
+                    for part in [(row["hook"] or "").strip(), (row["body"] or "").strip()]
+                    if part
+                ),
+                "platforms": {},
+                "resolved_path": None,
+                "file_size": "",
+            },
+        )
+        platform = row["platform"] or "unknown"
+        summary = asset["platforms"].setdefault(platform, {"ok": 0, "fail": 0, "error": ""})
+        if row["ok"]:
+            summary["ok"] += 1
+            if not asset["permalink"] and row["permalink"]:
+                asset["permalink"] = row["permalink"]
+        else:
+            summary["fail"] += 1
+            summary["error"] = row["error"] or summary["error"]
+        if not asset["resolved_path"]:
+            asset["resolved_path"] = _resolve_user_media(
+                data_dir, row["media_local_path"] or ""
+            )
+            if asset["resolved_path"]:
+                size = asset["resolved_path"].stat().st_size
+                asset["file_size"] = (
+                    f"{size / (1024 * 1024):.1f} MB"
+                    if size >= 1024 * 1024
+                    else f"{size / 1024:.1f} KB"
+                )
+    assets = list(grouped.values())
+    for asset in assets:
+        asset["platforms"] = [
+            {"platform": name, **info}
+            for name, info in asset["platforms"].items()
+        ]
+        asset["ok_any"] = any(p["ok"] for p in asset["platforms"])
+    return assets
+
+
+@app.get("/dashboard/assets", response_class=HTMLResponse)
+def assets_page(request: Request, hours: str = Query("24")):
+    user = require_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    asset_hours = _asset_hours(hours)
+    assets = _user_assets(user.id, hours=asset_hours)
+    images = [a for a in assets if a["media_kind"] == "image"]
+    videos = [a for a in assets if a["media_kind"] == "video"]
+    return templates.TemplateResponse(
+        request,
+        "assets.html",
+        {
+            "user": user,
+            "assets": assets,
+            "images": images,
+            "videos": videos,
+            "hours": asset_hours,
+            "image_count": len(images),
+            "video_count": len(videos),
+        },
+    )
+
+
+def _asset_row_for_user(user_id: int, post_id: int) -> dict | None:
+    data_dir = _user_agent_dir(user_id)
+    db = data_dir / "history.db"
+    if not db.is_file():
+        return None
+    conn = _open_history_readonly(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            """
+            SELECT id, created_at, theme, platform, ok, media_kind, media_local_path
+            FROM posts
+            WHERE id = ? AND media_kind IN ('image', 'video')
+            """,
+            (post_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {
+        **dict(row),
+        "data_dir": data_dir,
+        "resolved_path": _resolve_user_media(data_dir, row["media_local_path"] or ""),
+    }
+
+
+@app.get("/dashboard/assets/media/{post_id}")
+def asset_media(request: Request, post_id: int, download: bool = Query(False)):
+    user = require_user(request)
+    if not user:
+        return JSONResponse({"error": "not authenticated"}, status_code=401)
+    row = _asset_row_for_user(user.id, post_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    path = row.get("resolved_path")
+    if not path:
+        raise HTTPException(status_code=404, detail="Asset file is no longer available")
+    suffix = path.suffix.lower()
+    media_type = (
+        "video/mp4"
+        if row["media_kind"] == "video" or suffix in {".mp4", ".mov", ".webm"}
+        else "image/jpeg"
+        if suffix in {".jpg", ".jpeg"}
+        else "image/webp"
+        if suffix == ".webp"
+        else "image/png"
+    )
+    stem = "_".join(
+        part
+        for part in [
+            (row["created_at"] or "").replace(":", "").replace("-", "")[:15],
+            (row["platform"] or "asset"),
+            (row["theme"] or "reachly").replace(" ", "_")[:32],
+            str(row["id"]),
+        ]
+        if part
+    )
+    filename = f"{stem}{suffix or '.bin'}"
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        filename=filename,
+        content_disposition_type="attachment" if download else "inline",
+    )
+
+
+@app.get("/dashboard/assets/archive")
+def asset_archive(request: Request, hours: str = Query("24")):
+    user = require_user(request)
+    if not user:
+        return JSONResponse({"error": "not authenticated"}, status_code=401)
+    asset_hours = _asset_hours(hours)
+    assets = _user_assets(user.id, hours=asset_hours, limit=300)
+    buffer = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for asset in assets:
+            path = asset.get("resolved_path")
+            if path and Path(path).is_file():
+                zf.write(path, f"media/asset_{asset['post_id']}{Path(path).suffix.lower()}")
+                count += 1
+            text = (asset.get("copy_text") or "").strip()
+            if text:
+                zf.writestr(f"text/post_{asset['post_id']}.txt", text)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="No downloadable assets in this window")
+    buffer.seek(0)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="reachly_assets_last_{asset_hours}h.zip"'
+            )
+        },
+    )
 
 
 # ---- billing ----------------------------------------------------------

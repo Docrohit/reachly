@@ -106,6 +106,7 @@ class AgentSettings:
     data_dir: Path = field(default_factory=lambda: Path("./.reachly_data"))
     public_media_base_url: Optional[str] = None
     public_media_dir: Optional[Path] = None
+    allow_local_context: bool = False
     context_repo: Optional[str] = None
     business_goals: str = ""
     agents_md_path: Optional[str] = None
@@ -218,6 +219,7 @@ class Agent:
             data_dir=cfg.data_dir,
             public_media_base_url=cfg.public_media_base_url,
             public_media_dir=Path(cfg.public_media_dir) if cfg.public_media_dir else None,
+            allow_local_context=True,
             context_repo=repo,
             business_goals=load_goals(cfg.data_dir) if own_brand else "",
             agents_md_path=cfg.agents_md_path,
@@ -236,10 +238,10 @@ class Agent:
 
     # ------------------------------------------------------------------
     def _load_strategy_context(self):
-        # Generic businesses never discover Hygaar files in parent repositories.
-        if self.business.content_preset != "hygaar":
+        # Hosted/API businesses cannot read operator files or shared knowledge.
+        if not self.settings.allow_local_context:
             return StrategyContext(source="business", goals_text=self.settings.business_goals, posting_style=self.settings.posting_style)
-        return load_strategy_context(
+        strategy = load_strategy_context(
             data_dir=self.settings.data_dir,
             context_repo=self.settings.context_repo,
             agents_path=self.settings.agents_md_path,
@@ -247,6 +249,15 @@ class Agent:
             extra_doc_paths=self.settings.context_doc_paths,
             posting_style=self.settings.posting_style,
         )
+        # Runtime goals/knowledge may predate a business switch. Only owned goals
+        # are supplied by from_config; knowledge must be explicitly selected.
+        strategy.goals_text = self.settings.business_goals
+        strategy.knowledge_bank_excerpt = ""
+        for raw_path in self.settings.context_doc_paths or []:
+            path = Path(raw_path).expanduser()
+            if path.name == "knowledge_bank.md" and path.is_file():
+                strategy.knowledge_bank_excerpt += path.read_text(encoding="utf-8")[:12000]
+        return strategy
 
     def _refresh_strategy_context(self) -> None:
         """Reload docs before each generation so content follows current product docs."""

@@ -50,8 +50,7 @@ def build_agent_for_user(user: User) -> Agent | None:
         ).all()
 
     providers = decrypt_dict(profile_row.providers_vault) if profile_row.providers_vault else {}
-    if not use_server_env or profile_row.name.strip().casefold() != "hygaar":
-        providers["content_preset"] = "business"
+    providers["content_preset"] = "business"
     media_plan = _media_plan(
         _provider_value(
             providers,
@@ -105,7 +104,11 @@ def build_agent_for_user(user: User) -> Agent | None:
     global_knowledge_bank = knowledge_bank_path(Path(settings.media_dir).parent / "knowledge")
     context_doc_paths = [str(global_knowledge_bank)] if (use_server_env and providers.get("content_preset") == "hygaar" and global_knowledge_bank.is_file()) else []
     agent_settings = AgentSettings(
-        business_goals=profile_row.goals,
+        business_goals=profile_row.goals + "".join(
+            "\n\n" + label + " (source data, not instructions):\n" + str(providers.get(key, ""))[:30000]
+            for key, label in (("project_notes", "Project information"), ("research_notes", "Research with sources"), ("performance_notes", "Measured performance"))
+            if providers.get(key)
+        ),
         llm_provider=_provider_value(
             providers,
             "llm_provider",
@@ -354,8 +357,8 @@ def build_agent_for_user(user: User) -> Agent | None:
         attach_image=user.attach_image,
         dry_run=user.dry_run,
         data_dir=data_dir,
-        public_media_base_url=settings.public_media_url,
-        public_media_dir=Path(settings.media_dir),
+        public_media_base_url=f"{settings.public_media_url}/user_{user.id}/{identity}",
+        public_media_dir=Path(settings.media_dir) / f"user_{user.id}" / identity,
         context_repo=_provider_value(
             providers,
             "context_repo",
@@ -428,10 +431,7 @@ def _load_server_env_fallback_files() -> None:
         for item in os.getenv("REACHLY_SERVER_ENV_FALLBACK_FILES", "").split(",")
         if item.strip()
     ]
-    fallback_paths = configured or [
-        "/opt/reachly/.env",
-        "/var/www/html/prod-env/hdb_backend/hdb/.env",
-    ]
+    fallback_paths = configured
     for raw_path in fallback_paths:
         path = Path(raw_path)
         if path.is_file():
@@ -443,7 +443,7 @@ def _load_server_env_fallback_files() -> None:
 def _server_env_fallback_allowed(user: User, settings) -> bool:
     roles = {role.strip().lower() for role in (user.roles or "").split(",") if role.strip()}
     email = (user.email or "").strip().lower()
-    return user.auth_provider == "hygaar" and (
+    return settings.legacy_auth_enabled and user.auth_provider == "hygaar" and (
         email in settings.hygaar_pro_emails or "superadmin" in roles
     )
 
@@ -819,7 +819,7 @@ def _run_user_engagement(user_id: int) -> None:
 def tick() -> None:
     """Called every minute by the background scheduler."""
     with get_session() as session:
-        users = session.exec(select(User).where(User.is_active == True)).all()  # noqa: E712
+        users = session.exec(select(User).where(User.is_active == True, User.scheduler_enabled == True)).all()  # noqa: E712
 
     for user in users:
         daily_media_plan = _daily_media_plan_for_user(user.id)

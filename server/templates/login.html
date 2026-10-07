@@ -8,23 +8,15 @@
         <strong style="font-size:22px;color:var(--brand)">R</strong>
       </div>
       <h1 style="font-size:28px;margin:0">Welcome back</h1>
-      <p class="muted" style="margin-top:6px">Sign in with your Hygaar console account.</p>
+      <p class="muted" style="margin-top:6px">Sign in to your Reachly workspace with a Telegram code.</p>
     </div>
 
     {% if error %}<p class="err">{{ error }}</p>{% endif %}
 
-    <form method="post" action="/auth/hygaar/login">
-      <label>Email</label>
-      <input name="email" type="email" autocomplete="email" value="{{ email or '' }}" placeholder="you@company.com" required />
-      <label>Password</label>
-      <input name="password" type="password" autocomplete="current-password" placeholder="Min. 8 characters" required />
-      <button class="btn primary" style="margin-top:18px;width:100%" type="submit">Sign in</button>
-    </form>
-
     {% if telegram_enabled %}
     <div style="border-top:1px solid var(--border);margin-top:24px;padding-top:18px">
-      <h2 style="font-size:16px">Legacy Telegram login</h2>
-      <p class="muted">Use this only for old Reachly SaaS test accounts.</p>
+      <h2 style="font-size:16px">Telegram sign-in</h2>
+      <p class="muted">{% if bot %}First open <a href="https://t.me/{{ bot }}" target="_blank" rel="noopener">@{{ bot }}</a> in Telegram and tap Start.{% else %}Sign-in is being set up. Please try again later.{% endif %}</p>
       <label>Your Telegram handle or ID</label>
       <input id="handle" placeholder="@yourname or 123456789" />
       <button class="btn" style="margin-top:12px;width:100%" onclick="sendCode()" type="button">Send Telegram code</button>
@@ -37,6 +29,8 @@
         <button class="btn" style="margin-top:12px;width:100%" type="submit">Verify Telegram code</button>
       </form>
     </div>
+    {% else %}
+    <p class="muted">Sign-in is temporarily unavailable.</p>
     {% endif %}
   </div>
 </div>

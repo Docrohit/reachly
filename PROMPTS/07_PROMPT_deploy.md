@@ -1,21 +1,20 @@
-# Prompt 7: Reachly Deploy
-
-Use before deploying Reachly to a server:
+# Prompt 7: Personal Reachly Deploy
 
 ```markdown
-Deploy Reachly safely.
+Prepare a release of personal Reachly.
 
-1. Read `AGENTS.md`, `product_theory.md`, `business_goals.md`.
-2. Check `git status --short`.
-3. Run relevant local tests.
-4. Identify target:
-   - Personal SaaS: `/opt/reachly-saas`, service `reachly-saas`
-   - Hygaar self-hosted: `/opt/reachly`, services `reachly-agent`, `reachly-dashboard`
-5. Deploy only Reachly files. Do not touch Hygaar Django services.
-6. Restart only the relevant Reachly service(s).
-7. Verify:
-   - service active
-   - web endpoint responds for SaaS/dashboard
-   - `journalctl` has no immediate errors
-8. Write deploy result into `sessions/`.
+1. Read AGENTS.md, docs/PERSONAL_REACHLY_STATUS.md, and docs/RELEASE_RUNBOOK.md.
+2. Verify the personal remote, source revision, Git status, and relevant tests.
+3. Resolve the documented login, branding, and deployment separation gaps.
+4. Establish the personal host, domain, install path, service names, runtime
+   data locations, credentials, and rollback revision. Old scripts are templates,
+   not evidence of the correct target.
+5. Make the proposed deployment concrete and reviewable. Deploy only with user
+   authorization for that personal target; do not reuse other accounts/services.
+6. Preserve runtime data and restart only the selected personal services.
+7. Verify deployed revision, service state, logs, health endpoint, and actual
+   onboarding flow. Publishing acceptance is a separate authorized check.
+8. Record evidence, skipped checks, and rollback details in sessions/.
+
+The current GitHub workflow runs tests only; it does not deploy.
 ```

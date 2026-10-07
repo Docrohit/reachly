@@ -4,10 +4,10 @@
 <h1>Profile</h1>
 <div class="grid cols2">
   <div class="card">
-    <h2>Hygaar account</h2>
+    <h2>Reachly account</h2>
     <table>
-      <tr><th>User ID</th><td>{{ user.hygaar_user_id or '-' }}</td></tr>
-      <tr><th>Name</th><td>{{ user.username or '-' }}</td></tr>
+      <tr><th>User ID</th><td>{{ user.id }}</td></tr>
+      <tr><th>Name</th><td>{{ user.username or user.telegram_username or '-' }}</td></tr>
       <tr><th>Email</th><td>{{ user.email or '-' }}</td></tr>
       <tr><th>Roles</th><td>{{ user.roles or '-' }}</td></tr>
       <tr><th>Plan</th><td><span class="pill {{ 'on' if user.is_active else 'off' }}">{{ user.plan }}</span></td></tr>

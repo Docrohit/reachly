@@ -183,7 +183,7 @@ class AgentConfig:
         self.public_media_base_url = env.get("PUBLIC_MEDIA_BASE_URL") or None
         self.public_media_dir = env.get("PUBLIC_MEDIA_DIR") or None
 
-        # Strategy context (Hygaar: point at hdb_backend on server)
+        # Strategy context: explicitly selected personal or business documents
         self.context_repo = env.get("REACHLY_CONTEXT_REPO") or None
         self.agents_md_path = env.get("REACHLY_AGENTS_MD") or None
         self.product_theory_path = env.get("REACHLY_PRODUCT_THEORY_MD") or None

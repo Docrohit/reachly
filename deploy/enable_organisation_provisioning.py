@@ -1,4 +1,4 @@
-"""One-time, explicitly selected deployment capability for the Hyclinics client."""
+"""One-time, explicitly selected deployment capability for an explicitly selected service client."""
 import argparse
 import json
 import os
@@ -7,18 +7,18 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 
-def enable(env_file):
+def enable(env_file, client_id):
     values = dotenv_values(env_file)
     configured = values.get("REACHLY_GENERATION_CONFIG")
     if not configured or not Path(configured).is_absolute():
         raise ValueError("An absolute generation configuration path is required")
     path = Path(configured).resolve(strict=True)
     data = json.loads(path.read_text())
-    client = data.get("clients", {}).get("hyclinics")
+    client = data.get("clients", {}).get(client_id)
     if not isinstance(client, dict) or not values.get(client.get("token_env", "")):
-        raise ValueError("The Hyclinics service client and credential must already be configured")
+        raise ValueError("The selected service client and credential must already be configured")
     if client.get("provider") not in data.get("providers", {}):
-        raise ValueError("The Hyclinics generation provider must already be configured")
+        raise ValueError("The selected generation provider must already be configured")
     if client.get("organisation_provisioning") is True:
         return False
     previous = path.read_bytes()
@@ -48,6 +48,7 @@ def enable(env_file):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", required=True)
+    parser.add_argument("--client-id", required=True)
     args = parser.parse_args()
-    enable(args.env_file)
-    print("Hyclinics organisation provisioning is enabled.")
+    enable(args.env_file, args.client_id)
+    print("Selected client organisation provisioning is enabled.")

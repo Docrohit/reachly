@@ -16,7 +16,7 @@ Check:
 - No broad exception silently hides platform failure.
 - Scheduler changes do not duplicate posts unexpectedly.
 - Platform changes do not affect unrelated platforms.
-- Dashboard/SaaS changes keep Telegram OTP and credential vault behavior intact.
+- Dashboard/SaaS changes preserve the intended personal login and credential vault behavior.
 
 Fix issues before documenting.
 
@@ -54,8 +54,8 @@ Use this template:
 - ...
 
 ## Deploy State
-- Personal SaaS:
-- Hygaar self-hosted:
+- Personal target and deployed revision (or not deployed):
+- Remaining separation gaps:
 - Platform status:
 
 ## Risks / Follow-ups
@@ -71,7 +71,8 @@ If changes should be preserved:
 - `git status --short`
 - `git add ...`
 - `git commit -m "..."`
-- `git push`
+- Verify origin is the personal repository before pushing a task branch.
+- Use a reviewed PR for personal main; never push directly to main.
 
 ## 5. Handoff
 
