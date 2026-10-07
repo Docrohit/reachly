@@ -52,3 +52,16 @@ connections, and no live-posting accounts. Its bot is reachlypersonalbot.
 
 Deployment revision, backup and post-release verification will be recorded after
 release. A GitHub push alone is not deployment evidence.
+
+## First release compatibility check
+
+The original personal database kept telegram_chat_id NOT NULL. The first
+workspace provisioning attempt failed on that historical constraint and the
+release restored the previous code/configuration and SQLite backup automatically.
+The old public site remained healthy. Workspaces now receive unique namespaced
+non-Telegram identifiers; they still use the owner's login and cannot sign in
+independently. A regression test covers the original NOT NULL schema.
+
+GitHub branch push succeeded. PR creation was refused by the current CLI account
+and the connected integration (permissions); no PR or GitHub CI pass is claimed
+for the initial push. The test workflow now also runs on codex task branches.

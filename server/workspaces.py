@@ -1,4 +1,6 @@
 """Owner-scoped business workspaces sharing one personal sign-in."""
+import uuid
+
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlmodel import select
@@ -30,7 +32,11 @@ def create_workspace(owner_id, name, website, **profile_values):
         workspaces = session.exec(select(User).where(User.owner_user_id == owner_id)).all()
         if len(workspaces) >= 30:
             raise ValueError("This account already has 30 business workspaces.")
+        # Early personal installs require a unique, non-null Telegram ID. A
+        # namespaced non-Telegram value keeps that schema without binding a
+        # workspace to another person's login or rebuilding the user table.
         workspace = User(owner_user_id=owner_id, auth_provider="workspace", username=name,
+                         telegram_chat_id=f"workspace:{uuid.uuid4()}",
                          is_active=owner.is_active, plan=owner.plan, timezone=owner.timezone,
                          dry_run=True, scheduler_enabled=False)
         session.add(workspace); session.flush()

@@ -12,11 +12,18 @@ from reachly.storage import History
 
 
 @pytest.fixture
-def personal(tmp_path, monkeypatch):
+def personal(tmp_path, monkeypatch, request):
     from server import app as web, db, orchestrator, studio
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False})
     monkeypatch.setattr(db, "engine", engine)
-    SQLModel.metadata.create_all(engine)
+    column = db.User.__table__.c.telegram_chat_id
+    was_nullable = column.nullable
+    if getattr(request, "param", None) == "legacy":
+        column.nullable = False
+    try:
+        SQLModel.metadata.create_all(engine)
+    finally:
+        column.nullable = was_nullable
     monkeypatch.setattr(web.settings, "media_dir", str(tmp_path / "media"))
     monkeypatch.setattr(web.settings, "vault_key", Fernet.generate_key().decode())
     monkeypatch.setattr(web.settings, "legacy_auth_enabled", False)
@@ -159,3 +166,15 @@ def test_two_businesses_keep_credentials_content_and_switching_separate(personal
     assert client.post(f"/workspaces/{other_id}/switch").status_code == 404
     with db.get_session() as session:
         assert session.get(db.User, first_id).scheduler_enabled is False
+
+
+@pytest.mark.parametrize("personal", ["legacy"], indirect=True)
+def test_workspace_creation_supports_original_nonnullable_telegram_schema(personal):
+    client, user, web, db, studio = personal
+    assert client.post("/workspaces", data={"name": "Council of AI"}).status_code == 200
+    assert client.post("/workspaces", data={"name": "Council Network"}).status_code == 200
+    with db.get_session() as session:
+        children = session.exec(select(db.User).where(db.User.owner_user_id == user.id)).all()
+        assert len(children) == 2
+        assert len({child.telegram_chat_id for child in children}) == 2
+        assert all(child.telegram_chat_id.startswith("workspace:") for child in children)
