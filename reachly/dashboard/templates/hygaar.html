@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Reachly · Hygaar</title>
+  <title>Reachly · {{ cfg.business.name }}</title>
   <style>
     :root{--bg:#0b0d12;--panel:#141821;--border:#26304a;--text:#e9edf5;--muted:#97a3b6;--brand:#6c8cff;--ok:#34d399}
     *{box-sizing:border-box}
@@ -37,8 +37,8 @@
 <body>
 <div class="wrap">
   <header style="margin-bottom:24px">
-    <h1>Reachly <span class="pill">Hygaar</span></h1>
-    <p class="muted">Goals drive posts. Reachly also reads <code>knowledge_bank.md</code>, current repo context, moat docs, business cases, and explicit context docs when present.</p>
+    <h1>Reachly <span class="pill">{{ cfg.business.name }}</span></h1>
+    <p class="muted">Content follows this business profile and its own goals. Product repository context is used only with the explicit Hygaar preset.</p>
     {% if request.query_params.get('saved') %}<p class="ok">Settings saved.</p>{% endif %}
   </header>
 
@@ -47,7 +47,7 @@
       <div class="card" style="grid-column:1/-1">
         <h2>Business goals</h2>
         <p class="muted">What should Reachly optimize for this quarter? Campaigns, ICP, messages to push. When filled, this overrides generic prompts.</p>
-        <textarea name="goals" placeholder="e.g. Position Hygaar as the AI media layer for e-commerce brands in EU. Push agentic pipelines, virtual try-on, and speed vs studio shoots...">{{ goals }}</textarea>
+        <textarea name="goals" placeholder="Describe this business, its audience, services and current goals.">{{ goals }}</textarea>
       </div>
 
       <div class="card">
@@ -55,7 +55,7 @@
         <label>Voice</label>
         <select name="posting_style">
           <option value="thought_leader" {{ 'selected' if dash.posting_style=='thought_leader' }}>Thought leader (insights first)</option>
-          <option value="brand_promoter" {{ 'selected' if dash.posting_style=='brand_promoter' }}>Hygaar promoter (product + market education)</option>
+          <option value="brand_promoter" {{ 'selected' if dash.posting_style=='brand_promoter' }}>Brand promoter (product + market education)</option>
         </select>
         <label>Post times ({{ cfg.timezone }})</label>
         <input name="post_times" value="{{ dash.post_times | join(',') }}" placeholder="{{ default_times }}"/>
@@ -63,17 +63,25 @@
         <input name="instagram_offset_minutes" value="{{ dash.instagram_offset_minutes or 5 }}" type="number" min="1" max="180"/>
         <label>Extra long-form video times ({{ cfg.timezone }})</label>
         <input name="longform_video_times" value="{{ dash.longform_video_times | join(',') }}" placeholder="11:30,17:30"/>
-        <p class="muted">Default Hygaar: image, image, image, long-form, vertical, image.</p>
+        <p class="muted">Media scheduling follows this instance’s configuration.</p>
       </div>
 
       <div class="card">
         <h2>Context repo</h2>
         <label>Path to product repo (AGENTS, product theory, moat docs, business cases; release events use knowledge bank)</label>
-        <input name="context_repo" value="{{ dash.context_repo or cfg.context_repo or '' }}" placeholder="/var/www/html/dev-env/hdb_backend"/>
+        <input name="context_repo" value="{{ dash.context_repo or cfg.context_repo or '' }}" placeholder="Only used with the Hygaar preset"/>
         <p class="muted">Strategy source now: <strong>{{ strategy_source }}</strong></p>
       </div>
     </div>
 
+    <div class="card" style="margin-top:16px"><h2>{{ cfg.business.name }} branding</h2>
+      {% set brand = dash.get('brand', {}) if dash.get('brand', {}).get('owner') == cfg.business.name else {} %}
+      <label>Colours (comma-separated hex values)</label><input name="brand_colors" value="{{ brand.get('colors', cfg.business.brand_colors)|join(', ') }}"/>
+      <label>Visual theme</label><input name="brand_theme" value="{{ brand.get('theme', cfg.business.brand_theme) }}"/>
+      <label>Business logo (PNG/JPEG under 2 MB)</label><input type="file" accept="image/png,image/jpeg" onchange="const f=this.files[0];if(!f)return;if(f.size>2000000){alert('Logo must be under 2 MB');this.value='';return;}const r=new FileReader();r.onload=()=>document.getElementById('own-logo').value=r.result.split(',')[1];r.readAsDataURL(f)"/>
+      <input type="hidden" id="own-logo" name="brand_logo_base64"/>
+      <label><input type="checkbox" name="remove_brand_logo" value="yes"/> Remove logo</label>
+    </div>
     <button class="btn primary" type="submit">Save goals &amp; schedule</button>
   </form>
 

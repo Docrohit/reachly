@@ -46,8 +46,12 @@ class LLMClient:
             raise ValueError(f"Unknown LLM provider: {self.provider}")
         return _strip_json_fences(text) if as_json else text
 
-    def generate_json(self, system: str, prompt: str) -> dict:
-        raw = self.generate(system, prompt, as_json=True)
+    def generate_json(self, system: str, prompt: str, *, response_schema: Optional[dict] = None) -> dict:
+        # Opt-in for strict consumers; existing text/post generation is unchanged.
+        if response_schema is not None and self.provider == "gemini":
+            raw = self._gemini(system, prompt, response_schema=response_schema)
+        else:
+            raw = self.generate(system, prompt, as_json=True)
         try:
             return _json.loads(raw)
         except _json.JSONDecodeError:
@@ -58,15 +62,18 @@ class LLMClient:
             raise
 
     # ---- providers ----------------------------------------------------
-    def _gemini(self, system: str, prompt: str) -> str:
+    def _gemini(self, system: str, prompt: str, *, response_schema: Optional[dict] = None) -> str:
         from google import genai
         from google.genai import types
 
+        config = {"system_instruction": system}
+        if response_schema is not None:
+            config.update(response_mime_type="application/json", response_json_schema=response_schema)
         client = genai.Client(api_key=self._gemini_key)
         resp = client.models.generate_content(
             model=self.model,
             contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=system),
+            config=types.GenerateContentConfig(**config),
         )
         return (resp.text or "").strip()
 

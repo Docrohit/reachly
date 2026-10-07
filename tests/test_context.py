@@ -116,7 +116,7 @@ def test_agent_refreshes_strategy_context_before_each_post(tmp_path):
         return GeneratedPost(theme="theme", hook="hook", body="body")
 
     agent = Agent(
-        BusinessProfile(name="Hygaar", content_themes=["theme"]),
+        BusinessProfile(name="Hygaar", content_themes=["theme"], content_preset="hygaar"),
         {},
         AgentSettings(data_dir=tmp_path / "data", context_repo=str(repo)),
     )

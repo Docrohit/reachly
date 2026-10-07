@@ -121,6 +121,12 @@ class InstagramBrowserPoster(Poster):
                     page.goto("https://www.instagram.com/", wait_until="domcontentloaded")
                     page.wait_for_timeout(4000)
 
+                expected = self.creds.extra.get("expected_account")
+                if expected:
+                    profile = page.get_by_role("link", name="Profile", exact=True)
+                    if profile.count() != 1 or profile.get_attribute("href") != f"/{expected}/":
+                        return self._fail("Reconnect the expected Instagram account before publishing.")
+
                 if not self._open_create(page, post.media.kind):
                     shot = save_debug_artifact(page, self.data_dir, "instagram", "create_not_found")
                     return self._fail(f"Could not open Instagram create dialog. Debug: {shot}")
@@ -151,10 +157,14 @@ class InstagramBrowserPoster(Poster):
                 page.keyboard.type(caption, delay=3)
 
                 page.get_by_role("button", name="Share", exact=True).first.click(timeout=12000)
-                page.wait_for_timeout(6000)
+                page.get_by_text("Your post has been shared", exact=False).first.wait_for(
+                    state="visible", timeout=45000
+                )
                 return self._ok()
         except Exception as e:  # noqa: BLE001
-            return self._fail(f"Instagram browser error: {e}")
+            # Browser errors can include caption text; record only the exception class.
+            logger.warning("Instagram browser outcome unconfirmed: %s", type(e).__name__)
+            return self._fail("Instagram result needs review in the bound account; do not retry automatically.")
 
     def _needs_login(self, page) -> bool:
         url = page.url

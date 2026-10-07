@@ -2,8 +2,7 @@
 {% block title %}Dashboard · Reachly{% endblock %}
 {% block content %}
 <h1>Reachly dashboard</h1>
-<p class="muted" style="margin-top:-8px">Configure your Hygaar-owned Reachly account, API credentials, schedule and publishing status.
-  <a href="/dashboard/assets">See generated content</a></p>
+<p class="muted" style="margin-top:-8px">Configure your Hygaar-owned Reachly account, API credentials, schedule and publishing status.</p>
 
 {% if not user.is_active %}
 <div class="card" style="border-color:var(--brand)">
@@ -202,7 +201,13 @@
       <div><label>Transcription fallback</label><input name="openai_transcription_fallback_model" placeholder="whisper-1"/></div>
     </div>
     <div class="row">
-      <div><label>Brand logo path</label><input name="brand_logo_path" placeholder="/opt/reachly/assets/hygaar_logo.png"/></div>
+      <div><label>This business's logo (PNG/JPEG, under 2 MB)</label>
+        <input type="file" accept="image/png,image/jpeg" onchange="const f=this.files[0];if(!f)return;if(f.size>2000000){alert('Logo must be under 2 MB');this.value='';return;}const r=new FileReader();r.onload=()=>document.getElementById('business-logo').value=r.result.split(',')[1];r.readAsDataURL(f)"/>
+        <input id="business-logo" name="brand_logo_base64" type="hidden"/>
+        <label><input type="checkbox" name="remove_brand_logo" value="yes"/> Remove saved logo</label></div>
+      <div><label>Business colours (hex, comma separated)</label><input name="brand_colors" value="{{ brand_settings.get('brand_colors', '') }}" placeholder="#123456, #abcdef"/></div>
+      <div><label>Visual theme</label><input name="brand_theme" value="{{ brand_settings.get('brand_theme', '') }}" placeholder="Describe this business's visual style"/></div>
+      <div><label>Content context</label><select name="content_preset"><option value="business">This business only</option value="hygaar" {% if brand_settings.get('content_preset') == 'hygaar' %}selected{% endif %}>Hygaar (only for the Hygaar business)</option></select></div>
       <div><label>Logo position</label>
         <select name="brand_logo_position">
           <option value="bottom-right">Bottom right</option>

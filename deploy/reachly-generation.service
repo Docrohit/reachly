@@ -1,0 +1,18 @@
+[Unit]
+Description=Reachly business content generation worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=reachly
+WorkingDirectory=/opt/reachly-saas
+EnvironmentFile=/opt/reachly-saas/.env
+UMask=0077
+ExecStart=/opt/reachly-saas/.venv/bin/python -m reachly.generation_worker
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

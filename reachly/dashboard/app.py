@@ -23,7 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from reachly.agent import Agent
 from reachly.config import AgentConfig
-from reachly.context import load_strategy_context
+from reachly.context import load_strategy_context, StrategyContext
 from reachly.longform_video import LongFormManualBrief
 from reachly.settings_store import (
     DEFAULT_POST_TIMES,
@@ -86,11 +86,14 @@ def create_app() -> FastAPI:
         goals = load_goals(cfg.data_dir)
         strategy = load_strategy_context(
             data_dir=cfg.data_dir,
-            context_repo=dash.get("context_repo") or cfg.context_repo,
-            agents_path=cfg.agents_md_path,
-            product_theory_path=cfg.product_theory_path,
+            context_repo=(dash.get("context_repo") or cfg.context_repo) if cfg.business.content_preset == "hygaar" else None,
+            agents_path=cfg.agents_md_path if cfg.business.content_preset == "hygaar" else None,
+            product_theory_path=cfg.product_theory_path if cfg.business.content_preset == "hygaar" else None,
             posting_style=dash.get("posting_style", "thought_leader"),
         )
+        if cfg.business.content_preset != "hygaar":
+            owned = dash.get("brand", {}).get("owner") == cfg.business.name
+            strategy = StrategyContext(source="business", goals_text=goals if owned else "")
         logs = _recent_logs(cfg.data_dir)
         assets = _recent_assets(cfg, hours=asset_hours)
         return templates.TemplateResponse(
@@ -131,6 +134,10 @@ def create_app() -> FastAPI:
         instagram_offset_minutes: int = Form(5),
         longform_video_times: str = Form("11:30,17:30"),
         context_repo: str = Form(""),
+        brand_colors: str = Form(""),
+        brand_theme: str = Form(""),
+        brand_logo_base64: str = Form(""),
+        remove_brand_logo: str = Form(""),
     ):
         if not _auth_ok(request, cfg):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -140,9 +147,20 @@ def create_app() -> FastAPI:
             for t in longform_video_times.replace(" ", "").split(",")
             if t.strip()
         ]
+        from reachly.business_brand import palette, logo_file
+        old_brand = load_dashboard_settings(cfg.data_dir).get("brand", {})
+        try:
+            colors = palette([c.strip() for c in brand_colors.split(",") if c.strip()])
+            logo = logo_file(brand_logo_base64, cfg.data_dir / "brand")
+        except (ValueError, OSError):
+            raise HTTPException(422, "Use a PNG/JPEG logo under 2 MB and hex brand colours")
+        if not logo and not remove_brand_logo and old_brand.get("owner") == cfg.business.name:
+            logo = old_brand.get("logo_path")
+        brand = {"owner": cfg.business.name, "colors": colors, "theme": brand_theme[:2000], "logo_path": logo}
         save_goals(cfg.data_dir, goals)
         save_dashboard_settings(
             cfg.data_dir,
+            brand=brand,
             post_times=times,
             posting_style=posting_style,
             context_repo=context_repo.strip(),

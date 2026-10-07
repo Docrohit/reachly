@@ -33,6 +33,8 @@ rsync -a --delete \
   --exclude '.venv' \
   --exclude '.env' \
   --exclude '.reachly_data' \
+  --exclude '.reachly_generation' \
+  --exclude 'brands' \
   --exclude 'reachly_media' \
   --exclude '__pycache__' \
   --exclude '*.pyc' \

@@ -1,12 +1,14 @@
 import tempfile
 import unittest
+from inspect import signature
 from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
 
 from reachly.agent import Agent, AgentSettings
-from reachly.media import _apply_logo_overlay
+from reachly.config import AgentConfig
+from reachly.media import _apply_logo_overlay, generate_image_gemini
 from reachly.models import (
     BusinessProfile,
     GeneratedMedia,
@@ -18,6 +20,14 @@ from reachly.models import (
 
 
 class MediaBrandingTests(unittest.TestCase):
+    def test_gemini_image_defaults_use_nano_banana_2(self):
+        self.assertEqual(AgentSettings().gemini_image_model, "gemini-3.1-flash-image")
+        self.assertEqual(AgentConfig({}).gemini_image_model, "gemini-3.1-flash-image")
+        self.assertEqual(
+            signature(generate_image_gemini).parameters["model"].default,
+            "gemini-3.1-flash-image",
+        )
+
     def test_logo_overlay_marks_generated_image_corner(self):
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "image.png"

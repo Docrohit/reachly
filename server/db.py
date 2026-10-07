@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlalchemy import Column, DateTime
 
 from .settings import get_settings
 
@@ -27,7 +28,7 @@ class User(SQLModel, table=True):
     # Legacy Telegram login fields remain for old SaaS/self-host experiments.
     telegram_chat_id: Optional[str] = Field(default=None, index=True, unique=True)
     telegram_username: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime(timezone=False), nullable=False))
 
     plan: str = "free"                 # free | pro
     is_active: bool = False            # gated by payment unless free_mode
@@ -85,14 +86,14 @@ class OtpRow(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     telegram_chat_id: str = Field(index=True)
     code: str
-    expires_at: datetime
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=False))
     consumed: bool = False
 
 
 class PostLogRow(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime(timezone=False), nullable=False))
     platform: str
     ok: bool
     permalink: Optional[str] = None

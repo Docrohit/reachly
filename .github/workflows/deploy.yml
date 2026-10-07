@@ -1,6 +1,8 @@
 name: Reachly CI/CD
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - main
@@ -19,6 +21,11 @@ on:
         options:
           - saas
           - agent
+      enable_organisation_provisioning:
+        description: "Enable Hyclinics organisation registration using its existing service credential (SaaS only)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   test:
@@ -49,8 +56,14 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy == true
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
     environment: production
+    concurrency:
+      group: reachly-production-deploy
+      cancel-in-progress: false
+    env:
+      REACHLY_DEPLOY_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'saas' }}
+      ENABLE_ORGANISATION_PROVISIONING: ${{ github.event_name == 'push' || inputs.enable_organisation_provisioning }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,7 +113,6 @@ jobs:
       - name: Sync source
         env:
           REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
-          REACHLY_DEPLOY_TARGET: ${{ inputs.target }}
         run: |
           if [ "$REACHLY_DEPLOY_TARGET" = "agent" ]; then
             TARGET_PATH="/opt/reachly"
@@ -113,6 +125,8 @@ jobs:
             --exclude '.env' \
             --exclude '.venv' \
             --exclude '.reachly_data' \
+            --exclude '.reachly_generation' \
+            --exclude 'brands' \
             --exclude 'reachly_media' \
             --exclude '*.db' \
             --exclude '__pycache__' \
@@ -126,6 +140,8 @@ jobs:
               --exclude '.env' \
               --exclude '.venv' \
               --exclude '.reachly_data' \
+            --exclude '.reachly_generation' \
+            --exclude 'brands' \
               --exclude 'agents' \
               --exclude 'data' \
               --exclude 'reachly_media' \
@@ -135,7 +151,6 @@ jobs:
       - name: Install dependencies and restart service
         env:
           REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
-          REACHLY_DEPLOY_TARGET: ${{ inputs.target }}
         run: |
           if [ "$REACHLY_DEPLOY_TARGET" = "agent" ]; then
             TARGET_PATH="/opt/reachly"
@@ -163,6 +178,9 @@ jobs:
               sudo systemctl is-active reachly-agent.service
               sudo systemctl is-active reachly-dashboard.service
             else
+              if [ '$ENABLE_ORGANISATION_PROVISIONING' = 'true' ]; then
+                sudo '$TARGET_PATH/.venv/bin/python' '$TARGET_PATH/deploy/enable_organisation_provisioning.py' --env-file '$TARGET_PATH/.env'
+              fi
               sudo cp '$TARGET_PATH/deploy/reachly-saas.service' /etc/systemd/system/reachly-saas.service
               sudo sed -i 's|/opt/reachly-saas|$TARGET_PATH|g' /etc/systemd/system/reachly-saas.service
               if command -v nginx >/dev/null 2>&1; then
@@ -176,12 +194,18 @@ jobs:
               sudo systemctl enable reachly-saas.service
               sudo systemctl restart reachly-saas.service
               sudo systemctl is-active reachly-saas.service
+              sudo cp '$TARGET_PATH/deploy/reachly-generation.service' /etc/systemd/system/reachly-generation.service
+              sudo sed -i 's|/opt/reachly-saas|$TARGET_PATH|g' /etc/systemd/system/reachly-generation.service
+              sudo systemctl daemon-reload
+              if sudo grep -q '^REACHLY_GENERATION_CONFIG=.' '$TARGET_PATH/.env'; then
+                sudo systemctl enable reachly-generation.service
+                sudo systemctl restart reachly-generation.service
+                sudo systemctl is-active reachly-generation.service
+              fi
             fi
           "
 
       - name: Smoke test
-        env:
-          REACHLY_DEPLOY_TARGET: ${{ inputs.target }}
         run: |
           if [ "$REACHLY_DEPLOY_TARGET" = "agent" ]; then
             ssh reachly-target "systemctl is-active reachly-agent.service && systemctl is-active reachly-dashboard.service"

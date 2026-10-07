@@ -50,6 +50,8 @@ def build_agent_for_user(user: User) -> Agent | None:
         ).all()
 
     providers = decrypt_dict(profile_row.providers_vault) if profile_row.providers_vault else {}
+    if not use_server_env or profile_row.name.strip().casefold() != "hygaar":
+        providers["content_preset"] = "business"
     media_plan = _media_plan(
         _provider_value(
             providers,
@@ -72,6 +74,9 @@ def build_agent_for_user(user: User) -> Agent | None:
         content_themes=[t.strip() for t in (profile_row.content_themes or "").split(",") if t.strip()],
         default_hashtags=_normalize_tags(profile_row.default_hashtags),
         language=profile_row.language,
+        brand_colors=providers.get("brand_colors", "").split(",") if providers.get("brand_colors") else [],
+        brand_theme=providers.get("brand_theme", ""),
+        content_preset=providers.get("content_preset", "business"),
     )
 
     platforms: dict[Platform, PlatformCredentials] = {}
@@ -93,9 +98,14 @@ def build_agent_for_user(user: User) -> Agent | None:
                 platforms[platform] = creds
 
     data_dir = Path(settings.media_dir).parent / "agents" / f"user_{user.id}"
+    if business.content_preset != "hygaar":
+        import hashlib
+        identity = hashlib.sha256((business.name + "|" + (business.website or "")).encode()).hexdigest()[:16]
+        data_dir = data_dir / identity
     global_knowledge_bank = knowledge_bank_path(Path(settings.media_dir).parent / "knowledge")
-    context_doc_paths = [str(global_knowledge_bank)] if global_knowledge_bank.is_file() else []
+    context_doc_paths = [str(global_knowledge_bank)] if (use_server_env and providers.get("content_preset") == "hygaar" and global_knowledge_bank.is_file()) else []
     agent_settings = AgentSettings(
+        business_goals=profile_row.goals,
         llm_provider=_provider_value(
             providers,
             "llm_provider",
@@ -333,12 +343,7 @@ def build_agent_for_user(user: User) -> Agent | None:
             use_env=use_server_env,
         ),
         daily_media_plan=media_plan,
-        brand_logo_path=_provider_value(
-            providers,
-            "brand_logo_path",
-            "BRAND_LOGO_PATH",
-            use_env=use_server_env,
-        ),
+        brand_logo_path=(providers.get("brand_logo_path") if providers.get("brand_owner", "").casefold() == business.name.casefold() else None),
         brand_logo_position=_provider_value(
             providers,
             "brand_logo_position",
@@ -356,7 +361,7 @@ def build_agent_for_user(user: User) -> Agent | None:
             "context_repo",
             "REACHLY_CONTEXT_REPO",
             default=profile_row.context_repo,
-            use_env=use_server_env,
+            use_env=False,
         ),
         context_doc_paths=context_doc_paths,
         posting_style=_provider_value(
@@ -393,9 +398,8 @@ def build_agent_for_user(user: User) -> Agent | None:
             else None
         ),
     )
-    if profile_row.goals.strip():
-        data_dir.mkdir(parents=True, exist_ok=True)
-        (data_dir / "goals.md").write_text(profile_row.goals, encoding="utf-8")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "goals.md").write_text(profile_row.goals, encoding="utf-8")
     return Agent(business, platforms, agent_settings)
 
 

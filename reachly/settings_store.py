@@ -58,11 +58,13 @@ def save_dashboard_settings(
     context_repo: str,
     instagram_offset_minutes: int = DEFAULT_INSTAGRAM_OFFSET_MINUTES,
     longform_video_times: Optional[list[str]] = None,
+    brand: Optional[dict] = None,
 ) -> None:
     Path(data_dir).mkdir(parents=True, exist_ok=True)
     settings_path(data_dir).write_text(
         json.dumps(
             {
+                "brand": brand if brand is not None else load_dashboard_settings(data_dir).get("brand", {}),
                 "post_times": post_times,
                 "instagram_offset_minutes": instagram_offset_minutes,
                 "longform_video_times": longform_video_times or DEFAULT_LONGFORM_VIDEO_TIMES,
