@@ -6,8 +6,8 @@ Priority:
   3. `AGENTS.md` + `product_theory.md` from the client's repo
   4. Supporting docs such as moat architecture and business-case CSVs
 
-For Hygaar the repo is typically `hdb_backend/` (or the monorepo root). Other
-customers set `REACHLY_CONTEXT_REPO` to their product repo path.
+Set `REACHLY_CONTEXT_REPO` to the selected business repo. Discovery never
+walks outside it; additional context files must be selected explicitly.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ MAX_FILE_CHARS = 12_000  # per file, keep prompts bounded
 SUPPORTING_DOC_PATTERNS = [
     "business_goals.md",
     "docs/DOC_INDEX_CURRENT.md",
-    "docs/HYGAAR_MOAT_ARCHITECTURE_2026.md",
+    "docs/PRODUCT_ARCHITECTURE.md",
     "Business_cases_may28_latest.csv",
     "Business_cases.csv",
     "Business_cases.xlsx - Sheet1.csv",
@@ -129,31 +129,11 @@ def _read_docx_text(path: Path) -> str:
 
 
 def _candidate_bases(repo: Path) -> list[Path]:
-    candidates = [repo, *list(repo.parents)[:3]]
-    expanded: list[Path] = []
-    for base in candidates:
-        expanded.append(base)
-        sub = base / "hdb_backend"
-        if sub.is_dir():
-            expanded.append(sub)
-        sub_v2 = base / "hdb_backend_v2"
-        if sub_v2.is_dir():
-            expanded.append(sub_v2)
-    deduped: list[Path] = []
-    seen: set[Path] = set()
-    for base in expanded:
-        try:
-            key = base.resolve()
-        except OSError:
-            key = base
-        if key not in seen:
-            deduped.append(base)
-            seen.add(key)
-    return deduped
+    return [repo.expanduser().resolve()]
 
 
 def find_repo_docs(repo: Path) -> tuple[Optional[Path], Optional[Path]]:
-    """Locate AGENTS.md and product_theory.md in repo or parents (up to 3 levels)."""
+    """Locate product docs within the explicitly selected repo only."""
     for base in _candidate_bases(repo):
         agents = base / "AGENTS.md"
         theory = base / "product_theory.md"
@@ -196,10 +176,10 @@ def _explicit_docs(paths: Optional[Iterable[str]]) -> list[Path]:
 
 def _supporting_doc_label(path: Path) -> str:
     name = path.name
-    if name == "HYGAAR_MOAT_ARCHITECTURE_2026.md":
-        return "Hygaar moat architecture"
+    if name == "PRODUCT_ARCHITECTURE.md":
+        return "Product architecture"
     if name.lower().startswith("business_cases"):
-        return "Hygaar business cases"
+        return "Business cases"
     if name == "business_goals.md":
         return "Business goals"
     if name == "DOC_INDEX_CURRENT.md":

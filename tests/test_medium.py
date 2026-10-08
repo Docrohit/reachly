@@ -47,6 +47,7 @@ def test_generate_medium_article_targets_leaders_and_16x9_images():
         llm,
         BusinessProfile(
             name="Hygaar",
+            content_preset="hygaar",
             website="https://hygaar.com",
             sector="AI product media",
             product_info="AI product images for ecommerce catalogues",

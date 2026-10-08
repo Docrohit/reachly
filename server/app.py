@@ -2,7 +2,7 @@
 
 Routes:
   /                       landing page
-  /login                  Hygaar console login, plus optional legacy Telegram OTP
+  /login                  Personal Reachly Telegram OTP
   /auth/send-code         POST -> sends OTP via Telegram bot
   /auth/verify            POST -> verifies OTP, starts session
   /dashboard              the user's control panel
@@ -19,23 +19,17 @@ Routes:
 from __future__ import annotations
 
 import io
-import logging
-import secrets
 import sqlite3
-import threading
 import zipfile
 from datetime import datetime, timedelta
-from pathlib import Path
 from urllib.parse import quote
+import logging
+import secrets
+import threading
+from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import (
-    FileResponse,
-    HTMLResponse,
-    JSONResponse,
-    RedirectResponse,
-    Response,
-)
+from fastapi import FastAPI, Form, Request, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
@@ -47,7 +41,7 @@ from reachly.knowledge_bank import (
     validate_knowledge_event,
 )
 
-from .crypto import encrypt_dict
+from .crypto import decrypt_dict, encrypt_dict
 from .db import (
     BusinessProfileRow,
     PlatformCredRow,
@@ -69,6 +63,12 @@ BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Reachly")
+from .generation_api import router as generation_router
+app.include_router(generation_router)
+from .studio import router as studio_router
+app.include_router(studio_router)
+from .workspaces import router as workspace_router
+app.include_router(workspace_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
 media_path = Path(settings.media_dir)
@@ -90,7 +90,14 @@ def current_user(request: Request) -> User | None:
     if not uid:
         return None
     with get_session() as session:
-        return session.get(User, uid)
+        owner = session.get(User, uid)
+        if not owner or owner.owner_user_id is not None:
+            return None
+        selected = request.session.get("workspace_id", owner.id)
+        user = session.get(User, selected)
+        if user and (user.id == owner.id or user.owner_user_id == owner.id):
+            return user
+        return owner
 
 
 def require_user(request: Request) -> User | None:
@@ -156,7 +163,8 @@ def landing(request: Request):
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    revision = BASE_DIR.parent / "REVISION"
+    return {"ok": True, "revision": revision.read_text().strip() if revision.is_file() else "development"}
 
 
 @app.post("/internal/knowledge-events")
@@ -198,6 +206,8 @@ def login_page(request: Request):
 
 @app.post("/auth/hygaar/login")
 def hygaar_login(request: Request, email: str = Form(...), password: str = Form(...)):
+    if not settings.legacy_auth_enabled:
+        return JSONResponse({"error": "This sign-in method is unavailable."}, status_code=404)
     try:
         result = login_with_hygaar(email, password)
     except HygaarAuthError as exc:
@@ -254,9 +264,10 @@ def verify(request: Request, handle: str = Form(...), code: str = Form(...)):
             },
             status_code=401,
         )
+    request.session.clear()
     request.session["user_id"] = user_id
     request.session["auth_provider"] = "telegram"
-    return RedirectResponse("/dashboard", status_code=303)
+    return RedirectResponse("/workspaces", status_code=303)
 
 
 @app.get("/logout")
@@ -289,6 +300,7 @@ def dashboard(request: Request):
         {
             "user": user, "profile": profile,
             "cred_modes": cred_modes, "logs": logs, "settings": settings,
+            "brand_settings": {k: v for k, v in (decrypt_dict(profile.providers_vault) if profile and profile.providers_vault else {}).items() if k in {"brand_colors", "brand_theme", "content_preset"}},
         },
     )
 
@@ -364,7 +376,11 @@ def save_profile(
     openai_transcription_model: str = Form(""),
     openai_transcription_fallback_model: str = Form(""),
     daily_media_plan: str = Form(""),
-    brand_logo_path: str = Form(""),
+    brand_logo_base64: str = Form(""),
+    remove_brand_logo: str = Form(""),
+    brand_colors: str = Form(""),
+    brand_theme: str = Form(""),
+    content_preset: str = Form("business"),
     brand_logo_position: str = Form("bottom-right"),
     text_platform_image_rate: str = Form("0.5"),
     linkedin_image_rate: str = Form(""),
@@ -407,7 +423,7 @@ def save_profile(
             "openai_transcription_model": openai_transcription_model,
             "openai_transcription_fallback_model": openai_transcription_fallback_model,
             "daily_media_plan": daily_media_plan,
-            "brand_logo_path": brand_logo_path,
+
             "brand_logo_position": brand_logo_position,
             "text_platform_image_rate": text_platform_image_rate,
             "linkedin_image_rate": linkedin_image_rate,
@@ -421,6 +437,15 @@ def save_profile(
         ).first()
         if not row:
             row = BusinessProfileRow(user_id=user.id)
+        business_changed = bool(row.id and (row.name != name or (row.website or "") != website))
+        if business_changed:
+            current = session.get(User, user.id)
+            current.dry_run = True
+            current.scheduler_enabled = False
+            session.add(current)
+            for connection in session.exec(select(PlatformCredRow).where(PlatformCredRow.user_id == user.id)).all():
+                connection.mode = "off"
+                session.add(connection)
         row.name, row.website, row.sector = name, website or None, sector or None
         row.vision, row.product_info = vision or None, product_info or None
         row.brand_voice = brand_voice
@@ -437,7 +462,25 @@ def save_profile(
         if row.providers_vault:
             from .crypto import decrypt_dict
             existing = decrypt_dict(row.providers_vault)
+        if business_changed:
+            for key in ("project_notes", "research_notes", "performance_notes"):
+                existing.pop(key, None)
         existing.update(providers)
+        from reachly.business_brand import logo_file, palette
+        try:
+            colors = palette([c.strip() for c in brand_colors.split(",") if c.strip()])
+            own_logo = logo_file(brand_logo_base64, Path(settings.media_dir).parent / "brands" / f"user_{user.id}")
+        except (ValueError, OSError):
+            from fastapi import HTTPException
+            raise HTTPException(422, "Provide a valid PNG/JPEG logo and hex brand colours")
+        existing["brand_theme"] = brand_theme[:2000]
+        existing["brand_colors"] = ",".join(colors)
+        existing["content_preset"] = "business"
+        if remove_brand_logo or existing.get("brand_owner", "").casefold() != name.strip().casefold():
+            existing.pop("brand_logo_path", None)
+        if own_logo:
+            existing["brand_logo_path"] = own_logo
+        existing["brand_owner"] = name.strip()
         row.providers_vault = encrypt_dict(existing)
         session.add(row)
         session.commit()
@@ -546,7 +589,8 @@ def save_settings(
     longform_video_times: str = Form("11:30,17:30"),
     timezone: str = Form("UTC"),
     attach_image: str = Form("on"),
-    dry_run: str = Form("off"),
+    dry_run: str = Form("on"),
+    scheduler_enabled: str = Form("off"),
     enable_engagement: str = Form("off"),
     engagement_delay_minutes: int = Form(30),
     engagement_max_comments: int = Form(3),
@@ -559,6 +603,7 @@ def save_settings(
         cleaned_post_times = ",".join(_parse_time_list(post_times)) or post_time
         cleaned_medium_times = ",".join(_parse_time_list(medium_times))
         cleaned_longform_video_times = ",".join(_parse_time_list(longform_video_times))
+        u.scheduler_enabled = scheduler_enabled == "on"
         u.post_time = post_time
         u.post_times = cleaned_post_times
         u.instagram_offset_minutes = max(0, min(240, instagram_offset_minutes))
@@ -635,7 +680,14 @@ def run_longform_video(
 
 # ---- generated assets --------------------------------------------------
 def _user_agent_dir(user_id: int) -> Path:
-    return Path(settings.media_dir).parent / "agents" / f"user_{user_id}"
+    import hashlib
+    with get_session() as session:
+        profile = session.exec(select(BusinessProfileRow).where(BusinessProfileRow.user_id == user_id)).first()
+    root = Path(settings.media_dir).parent / "agents" / f"user_{user_id}"
+    if profile:
+        identity = hashlib.sha256((profile.name + "|" + (profile.website or "")).encode()).hexdigest()[:16]
+        return root / identity
+    return root
 
 
 def _resolve_user_media(data_dir: Path, raw_path: str) -> Path | None:
@@ -653,7 +705,7 @@ def _resolve_user_media(data_dir: Path, raw_path: str) -> Path | None:
             Path(settings.media_dir) / path.name,
         ]
     )
-    roots = [data_dir.resolve(), Path(settings.media_dir).resolve()]
+    roots = [data_dir.resolve(), (Path(settings.media_dir) / data_dir.parent.name / data_dir.name).resolve()]
     for candidate in candidates:
         try:
             resolved = candidate.resolve()
@@ -675,7 +727,7 @@ def _asset_hours(value: str | None) -> int:
 
 
 def _open_history_readonly(db: Path) -> sqlite3.Connection:
-    return sqlite3.connect(f"file:{quote(str(db), safe='/')}?mode=ro&immutable=1", uri=True)
+    return sqlite3.connect(f"file:{quote(str(db), safe='/')}?mode=ro", uri=True)
 
 
 def _user_assets(user_id: int, *, hours: int, limit: int = 150) -> list[dict]:

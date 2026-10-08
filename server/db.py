@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlalchemy import Column, DateTime
 
 from .settings import get_settings
 
@@ -15,6 +16,7 @@ engine = create_engine(_settings.database_url, echo=False, connect_args=_connect
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    owner_user_id: Optional[int] = Field(default=None, index=True)
     auth_provider: str = Field(default="telegram", index=True)  # hygaar | telegram
 
     # Hygaar identity provider fields. Reachly keeps its own app DB, keyed by
@@ -27,7 +29,7 @@ class User(SQLModel, table=True):
     # Legacy Telegram login fields remain for old SaaS/self-host experiments.
     telegram_chat_id: Optional[str] = Field(default=None, index=True, unique=True)
     telegram_username: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime(timezone=False), nullable=False))
 
     plan: str = "free"                 # free | pro
     is_active: bool = False            # gated by payment unless free_mode
@@ -42,6 +44,7 @@ class User(SQLModel, table=True):
     longform_video_times: str = "11:30,17:30"
     timezone: str = "UTC"
     attach_image: bool = True
+    scheduler_enabled: bool = False
     dry_run: bool = True               # users start in dry-run until they confirm
     enable_engagement: bool = False
     engagement_delay_minutes: int = 30
@@ -85,14 +88,14 @@ class OtpRow(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     telegram_chat_id: str = Field(index=True)
     code: str
-    expires_at: datetime
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=False))
     consumed: bool = False
 
 
 class PostLogRow(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime(timezone=False), nullable=False))
     platform: str
     ok: bool
     permalink: Optional[str] = None
@@ -123,6 +126,8 @@ def _migrate_sqlite() -> None:
         user_rows = conn.exec_driver_sql("PRAGMA table_info(user)").fetchall()
         user_existing = {row[1] for row in user_rows}
         user_additions = {
+            "owner_user_id": "INTEGER",
+            "scheduler_enabled": "BOOLEAN NOT NULL DEFAULT 0",
             "auth_provider": "VARCHAR NOT NULL DEFAULT 'telegram'",
             "hygaar_user_id": "VARCHAR",
             "email": "VARCHAR",

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Analytics · Reachly{% endblock %}
+{% block content %}
+<h1>Publishing and performance</h1>
+<p class="muted">Your business's publishing history and measured results. Enter counts from your platform dashboard; automatic platform analytics sync is not connected yet. Saved results guide future drafts.</p>
+{% for p in rows %}<div class="card"><span class="pill">{{ p.platform }}</span><h2>{{ p.hook }}</h2><p>{{ p.created_at }} · {{ 'Published / accepted by platform' if p.ok else 'Failed' }}</p>{% if p.permalink %}<p>{{ p.permalink }}</p>{% endif %}{% if p.error %}<p class="err">{{ p.error }}</p>{% endif %}
+{% if p.ok and p.permalink != '(dry-run)' %}<form method="post" action="/analytics/{{ p.id }}"><div class="row">{% for name in ['impressions','likes','comments','shares'] %}<div><label>{{ name|capitalize }}</label><input type="number" min="0" max="1000000000000" name="{{ name }}" value="{{ p[name] if p[name] is not none else '' }}"/></div>{% endfor %}</div><button class="btn" type="submit">Save measured results</button></form>{% endif %}</div>{% else %}<div class="card">No publishing history for this business yet. Review a draft in the studio and publish through a connected account.</div>{% endfor %}
+{% if rows %}<div class="card"><h2>Feedback used for generation</h2><pre style="white-space:pre-wrap">{{ summary }}</pre></div>{% endif %}
+{% endblock %}

@@ -27,7 +27,7 @@ from typing import Optional
 
 from .config import AgentConfig
 from .content import generate_engagement_comment, generate_medium_article, generate_post, pick_theme
-from .context import load_strategy_context
+from .context import load_strategy_context, StrategyContext
 from .llm import LLMClient
 from .longform_video import (
     LongFormManualBrief,
@@ -66,7 +66,7 @@ class AgentSettings:
     elevenlabs_api_key: Optional[str] = None
 
     image_provider: str = "none"          # gemini | hygaar | none
-    gemini_image_model: str = "gemini-2.5-flash-image"
+    gemini_image_model: str = "gemini-3.1-flash-image"
     video_provider: str = "none"          # seedance | hygaar | none
     hygaar_base_url: Optional[str] = None
     hygaar_api_token: Optional[str] = None
@@ -89,7 +89,7 @@ class AgentSettings:
     longform_video_qc_model: str = "gemini-2.5-flash"
     openai_transcription_model: str = "gpt-4o-transcribe"
     openai_transcription_fallback_model: str = "whisper-1"
-    video_voiceover_enabled: bool = False
+    video_voiceover_enabled: bool = True
     video_voiceover_provider: str = "elevenlabs"
     video_voiceover_model: str = "tts-1"
     video_voiceover_voice: str = "alloy"
@@ -106,7 +106,9 @@ class AgentSettings:
     data_dir: Path = field(default_factory=lambda: Path("./.reachly_data"))
     public_media_base_url: Optional[str] = None
     public_media_dir: Optional[Path] = None
+    allow_local_context: bool = False
     context_repo: Optional[str] = None
+    business_goals: str = ""
     agents_md_path: Optional[str] = None
     product_theory_path: Optional[str] = None
     context_doc_paths: list[str] = field(default_factory=list)
@@ -157,9 +159,16 @@ class Agent:
 
     @classmethod
     def from_config(cls, cfg: "AgentConfig") -> "Agent":
-        from .settings_store import load_dashboard_settings
+        from .settings_store import load_dashboard_settings, load_goals
 
         dash = load_dashboard_settings(cfg.data_dir)
+        own_brand = dash.get("brand", {})
+        if own_brand.get("owner") != cfg.business.name:
+            own_brand = {}
+        business = cfg.business.model_copy(update={
+            "brand_colors": own_brand.get("colors", cfg.business.brand_colors),
+            "brand_theme": own_brand.get("theme", cfg.business.brand_theme),
+        })
         style = dash.get("posting_style") or cfg.posting_style
         repo = dash.get("context_repo") or cfg.context_repo
 
@@ -203,14 +212,16 @@ class Agent:
             elevenlabs_output_format=cfg.elevenlabs_output_format,
             spoken_brand_name=cfg.spoken_brand_name,
             daily_media_plan=cfg.daily_media_plan,
-            brand_logo_path=cfg.brand_logo_path,
+            brand_logo_path=own_brand.get("logo_path", cfg.brand_logo_path),
             brand_logo_position=cfg.brand_logo_position,
             attach_image=cfg.attach_image,
             dry_run=cfg.dry_run,
             data_dir=cfg.data_dir,
             public_media_base_url=cfg.public_media_base_url,
             public_media_dir=Path(cfg.public_media_dir) if cfg.public_media_dir else None,
+            allow_local_context=True,
             context_repo=repo,
+            business_goals=load_goals(cfg.data_dir) if own_brand else "",
             agents_md_path=cfg.agents_md_path,
             product_theory_path=cfg.product_theory_path,
             context_doc_paths=cfg.context_doc_paths,
@@ -223,11 +234,14 @@ class Agent:
             twitter_image_rate=cfg.twitter_image_rate,
             medium_image_aspect_ratio=cfg.medium_image_aspect_ratio,
         )
-        return cls(cfg.business, cfg.platforms, settings)
+        return cls(business, cfg.platforms, settings)
 
     # ------------------------------------------------------------------
     def _load_strategy_context(self):
-        return load_strategy_context(
+        # Hosted/API businesses cannot read operator files or shared knowledge.
+        if not self.settings.allow_local_context:
+            return StrategyContext(source="business", goals_text=self.settings.business_goals, posting_style=self.settings.posting_style)
+        strategy = load_strategy_context(
             data_dir=self.settings.data_dir,
             context_repo=self.settings.context_repo,
             agents_path=self.settings.agents_md_path,
@@ -235,6 +249,15 @@ class Agent:
             extra_doc_paths=self.settings.context_doc_paths,
             posting_style=self.settings.posting_style,
         )
+        # Runtime goals/knowledge may predate a business switch. Only owned goals
+        # are supplied by from_config; knowledge must be explicitly selected.
+        strategy.goals_text = self.settings.business_goals
+        strategy.knowledge_bank_excerpt = ""
+        for raw_path in self.settings.context_doc_paths or []:
+            path = Path(raw_path).expanduser()
+            if path.name == "knowledge_bank.md" and path.is_file():
+                strategy.knowledge_bank_excerpt += path.read_text(encoding="utf-8")[:12000]
+        return strategy
 
     def _refresh_strategy_context(self) -> None:
         """Reload docs before each generation so content follows current product docs."""
@@ -467,21 +490,9 @@ class Agent:
 
     def _fresh_video_reference_images(self, post: GeneratedPost, *, count: int = 3) -> list[dict[str, str]]:
         prompts = [
-            (
-                "Create a vertical cinematic reference still for a social media ad opening shot: "
-                "the place or environment where the business delivers its service - clean, "
-                "premium, welcoming, well-lit. No readable text, no logos, no people, no faces, no hands."
-            ),
-            (
-                "Create a vertical reference still showing the tools, equipment or service details "
-                "in a ready state - premium composition, studio lighting. "
-                "No text, no people, no faces, no hands."
-            ),
-            (
-                "Create a vertical reference still for the closing shot: the brand space, "
-                "products or finished service result at its best - aspirational and calm. "
-                "No text, no people, no faces, no hands."
-            ),
+            f"Create a vertical opening reference for this business's story: {post.image_prompt or post.hook}. No invented text or logos.",
+            f"Create a coherent middle reference showing this business's supplied services: {self.business.product_info or post.body[:400]}. No invented staff likenesses or premises.",
+            f"Create a closing reference for this business, consistent with its visual theme: {self.business.brand_theme}. No readable text or invented logos.",
         ]
         refs: list[dict[str, str]] = []
         for index, base_prompt in enumerate(prompts[: max(1, count)], start=1):
@@ -574,33 +585,25 @@ class Agent:
             f"- {row.get('theme')}: {row.get('hook')} {str(row.get('body') or '')[:260]}"
             for row in creative.source_posts[:3]
         )
-        if creative.strategy == "recap":
-            strategy_direction = (
-                "Use the reference images and recent post themes as a coherent daily recap ad. "
-                "Turn the last image-post ideas into one narrative: catalog chaos, AI production "
-                "system, consistent SKU-ready output, and business impact."
-            )
-        else:
-            strategy_direction = (
-                "Create a fresh conversion-oriented ad concept that positions Hygaar as the "
-                "catalog content at scale genAI layer for ecommerce teams."
-            )
+        strategy_direction = (
+            "Use the supplied references and recent themes as a coherent recap of this business."
+            if creative.strategy == "recap" else
+            "Create a fresh sector-appropriate story using only this business's supplied facts."
+        )
         return (
             f"Create a premium {self.settings.seedance_target_duration}-second vertical social video "
             f"for {self.business.name}.\n"
-            f"Business: {self.business.sector or 'AI-powered product media'}.\n"
+            f"Business: {self.business.sector or 'the supplied business sector'}.\n"
             f"Product context: {self.business.product_info or self.business.vision or post.body[:400]}.\n"
             f"Post hook: {post.hook}\n"
             f"Post body context: {post.body[:900]}\n"
             f"Visual direction: {source_prompt}\n"
             f"Creative strategy: {creative.strategy}. {strategy_direction}\n"
             f"Recent image-post source material:\n{source_posts or 'No prior image-post text available.'}\n"
-            "Voiceover/script direction: speak to ecommerce operators who need catalogue images, "
-            "variant visuals, PDP content, marketplace assets, and ad creatives at scale. Make the "
-            "message concrete: fewer manual shoots, consistent brand quality, faster SKU launches, "
-            "and AI agents that handle production workflows.\n"
+            "Voiceover/script direction: speak to this business's actual audience using the supplied post. "
+            "Do not invent capabilities, services, medical results or offers.\n"
             f"Hashtag context: {hashtags}\n\n"
-            "Requirements: cinematic ecommerce/product-media quality, strong opening motion in the "
+            "Requirements: cinematic quality appropriate to this sector, strong opening motion in the "
             "first two seconds, multi-angle and multi-scene storytelling inside one coherent ad, "
             "realistic lighting, no fake UI, no fake logos, no readable on-screen text, no watermark, "
             "no distorted products, clean ending frame suitable for Instagram Reels and LinkedIn feed."
@@ -684,26 +687,30 @@ class Agent:
         max_words: int = 78,
         expressive: bool = False,
     ) -> str:
-        business = (self.settings.spoken_brand_name or self.business.name).strip() or "Haigaar"
-        if business.lower() == "hygaar":
-            business = "Haigaar"
-        theme = re.sub(r"[^a-zA-Z0-9 ]+", " ", post.theme).strip().lower()
-        audience = "ecommerce teams"
-        if "beauty" in theme and "home" in theme:
-            audience = "beauty and home brands"
-        elif "fashion" in theme:
-            audience = "fashion brands"
-        elif "catalog" in theme or "catalogue" in theme:
-            audience = "catalog teams"
-        text = (
-            f"For {audience}, content velocity is now a growth lever. "
-            f"{business} turns a small set of product references into catalogue images, "
-            "product page visuals, marketplace assets, social creatives, and video ads at scale. "
-            "Launch more products, keep every variant on brand, and replace repeated manual "
-            "shoots with an AI production workflow built for conversion."
-        )
-        if self.business.product_info:
-            text += f" {self.business.product_info[:180]}"
+        business = self.business.name.strip()
+        if self.business.content_preset == "hygaar":
+            business = (self.settings.spoken_brand_name or self.business.name).strip() or "Haigaar"
+            if business.lower() == "hygaar":
+                business = "Haigaar"
+            theme = re.sub(r"[^a-zA-Z0-9 ]+", " ", post.theme).strip().lower()
+            audience = "ecommerce teams"
+            if "beauty" in theme and "home" in theme:
+                audience = "beauty and home brands"
+            elif "fashion" in theme:
+                audience = "fashion brands"
+            elif "catalog" in theme or "catalogue" in theme:
+                audience = "catalog teams"
+            text = (
+                f"For {audience}, content velocity is now a growth lever. "
+                f"{business} turns a small set of product references into catalogue images, "
+                "product page visuals, marketplace assets, social creatives, and video ads at scale. "
+                "Launch more products, keep every variant on brand, and replace repeated manual "
+                "shoots with an AI production workflow built for conversion."
+            )
+            if self.business.product_info:
+                text += f" {self.business.product_info[:180]}"
+        else:
+            text = f"{post.hook} {post.body}"
         text = re.sub(r"https?://\\S+", "", text)
         text = re.sub(r"#\\w+", "", text)
         text = re.sub(r"\\s+", " ", text).strip()
@@ -711,12 +718,13 @@ class Agent:
         if len(words) > max_words:
             text = " ".join(words[:max_words]).rstrip(".,;:") + "."
         if expressive and text:
+            ending = "[with conviction] Move from one-off shoots to a repeatable content system." if self.business.content_preset == "hygaar" else ""
             text = (
                 "[confident, warm commercial narrator]\n"
                 f"{text} [short pause]\n"
-                "[with conviction] Move from one-off shoots to a repeatable content system."
+                f"{ending}"
             )
-        return text or f"{business} creates catalogue content at scale with AI."
+        return text or business
 
     def _has_video(self, post: GeneratedPost) -> bool:
         return bool(post.media and post.media.kind == "video" and post.media.local_path)
@@ -1017,22 +1025,6 @@ class Agent:
                 print(post.for_platform(platform))
                 print()
                 results[platform] = PostResult(platform=platform, ok=True, permalink="(dry-run)")
-                publish_post = self._post_for_platform(post, platform)
-                media = publish_post.media
-                self.history.record(
-                    theme=post.theme,
-                    hook=post.hook,
-                    body=post.body,
-                    platform=platform.value,
-                    ok=True,
-                    permalink="(dry-run)",
-                    error=None,
-                    media_kind=media.kind if media else None,
-                    media_local_path=media.local_path if media else None,
-                    media_public_url=media.public_url if media else None,
-                    media_prompt=media.prompt if media else None,
-                    post_text=publish_post.for_platform(platform),
-                )
                 continue
 
             poster = get_poster(

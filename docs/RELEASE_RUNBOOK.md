@@ -1,159 +1,54 @@
-# Reachly Release Runbook
+# Personal Reachly Release Runbook
 
-Status: draft for Hygaar-owned repository
+Repository: `Docrohit/reachly`. Current CI runs tests only, with no deployment job.
+Verified personal target: `reachly.nftforger.com`, `/opt/reachly-saas`,
+`reachly-saas` on the personal VPS. Secrets remain outside Git.
 
-## Release Rule
+## Before release
 
-Reachly deploys independently from Hygaar Django and the React console. Do not
-modify CodeDeploy, hdb backend services, or console build/deploy paths for a
-Reachly release.
+Read `AGENTS.md` and `docs/PERSONAL_REACHLY_STATUS.md`. Check independent hosted login, personal branding, workspace isolation, and
+deployment defaults.
+Review the copied snapshot against personal main, including removed features.
 
-## Pre-Release Checks
-
-Run from the Reachly repo root:
+Run from the repo root:
 
 ```bash
-python -m compileall reachly server tests
-PYTHONPATH=. python -m pytest tests -q
+.venv/bin/python -m compileall -q reachly server tests
+PYTHONPATH=. .venv/bin/python -m pytest tests -q
 git diff --check
-ruby -e "require 'yaml'; YAML.load_file('.github/workflows/deploy.yml'); puts 'workflow_yaml_ok'"
-bash -n deploy/install_saas_on_server.sh
 ```
 
-For hosted production environment checks, run:
+Inspect staged files for credentials, browser sessions, runtime databases, and
+accidental environment files. Never print secret values in review output.
 
-```bash
-python -m server.preflight
-```
+## Personal deployment plan
 
-To verify the live Hygaar auth bridge without printing tokens or passwords, set
-credentials in the shell environment and run:
+Choose and verify a personal host, domain, install directory, service names,
+secret storage, data directories, backup, and rollback revision. Active install scripts target the personal domain. Archived proxy files are
+historical; never use them for a personal release.
+Neither historical service names nor a health response from an old domain prove
+that the new personal release is running there.
 
-```bash
-REACHLY_PREFLIGHT_HYGAAR_EMAIL="..." \
-REACHLY_PREFLIGHT_HYGAAR_PASSWORD="..." \
-python -m server.preflight --hygaar-auth
-```
+Use `python -m server.preflight` only with the intended personal environment.
+Configure production session and vault secrets, database, personal public URL,
+authentication and billing explicitly. Keep platform modes off and dry-run on
+until live posting is authorized for the selected account.
 
-Run a secret-oriented scan before the first Hygaar-owned push:
+Use a reviewed release archive of the tested Git revision, a private code/config
+backup, and a SQLite backup before changing this personal installation. Preserve
+the service environment and all runtime directories. Write the commit SHA into
+`REVISION`; `/healthz` reports it. Verify it after restart.
 
-```bash
-rg -n "AKIA[0-9A-Z]{16}|BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|xox[baprs]-|ghp_[A-Za-z0-9_]{30,}|AIza[0-9A-Za-z_-]{35}" . \
-  --glob '!*.pyc' \
-  --glob '!__pycache__/**' \
-  --glob '!.venv/**' \
-  --glob '!*.png'
-```
+Implement a deployment workflow for the personal target before enabling
+automatic releases from CI. A push to main currently runs tests only. Do not copy old
+remote-switching commands, account provisioning, nginx reloads, or server targets.
 
-Also inspect staged files manually for:
+## Release and acceptance
 
-- Hygaar account passwords
-- platform passwords
-- OAuth tokens
-- `REACHLY_VAULT_KEY`
-- `REACHLY_SESSION_SECRET`
-- browser session state
-- SQLite databases
+With authorization for the concrete deployment, release the tested revision and
+preserve `.env`, data, credentials, browser state, generated media, and databases.
+Verify the served revision, service logs, health response, personal sign-in,
+dashboard, and credential save/load. Record each check separately.
 
-## First Hygaar Repository Setup
-
-After `Hygaar/reachly` exists and access is granted:
-
-```bash
-git remote set-url origin git@github.com:Hygaar/reachly.git
-git push -u origin main
-```
-
-Required GitHub Actions production secrets:
-
-| Secret | Required | Meaning |
-|---|---|---|
-| `REACHLY_DEPLOY_HOST` | yes | EC2 host or DNS name reachable over SSH |
-| `REACHLY_DEPLOY_USER` | yes | SSH user; workflow defaults empty value to `ubuntu` |
-| `REACHLY_DEPLOY_SSH_KEY` | yes | Private deploy key with server access |
-| `REACHLY_DEPLOY_PATH` | no | Defaults to `/opt/reachly-saas` |
-| `REACHLY_BASTION_HOST` | no | Optional bastion/VPN host when the deploy host is private |
-| `REACHLY_BASTION_USER` | no | Optional bastion SSH user; defaults to `ubuntu` |
-| `REACHLY_BASTION_SSH_KEY` | no | Required only when `REACHLY_BASTION_HOST` is set |
-
-## Server Prerequisites
-
-The production server must have a Reachly `.env` outside git at:
-
-```text
-/opt/reachly-saas/.env
-```
-
-Minimum required production values:
-
-```env
-REACHLY_ENVIRONMENT=production
-REACHLY_FREE_MODE=false
-REACHLY_SESSION_SECRET=...
-REACHLY_VAULT_KEY=...
-REACHLY_DATABASE_URL=...
-REACHLY_PUBLIC_BASE_URL=https://reachly.hygaar.com
-REACHLY_HYGAAR_API_BASE_URL=https://genai.hygaar.com
-REACHLY_HYGAAR_LOGIN_PATH=/auth/login/
-REACHLY_TELEGRAM_LOGIN_ENABLED=false
-```
-
-Use `REACHLY_HYGAAR_PRO_EMAILS` only as a temporary manual activation path
-until billing is fully connected.
-
-## Deploy
-
-Deployment should happen through GitHub Actions after production secrets exist:
-
-1. Push to `main` after review approval.
-2. Confirm the push-triggered `test` job passes.
-3. Run the `Reachly CI/CD` workflow manually with `deploy=true`.
-4. Confirm the `deploy` job restarts `reachly-saas` and reloads the Reachly
-   nginx vhost.
-5. Confirm the workflow smoke test passes.
-
-Do not manually edit files on the server. If emergency rollback is required,
-deploy the last known good commit through the same workflow.
-
-## Post-Deploy Verification
-
-Read-only checks:
-
-```bash
-curl -fsS https://reachly.hygaar.com/healthz
-curl -fsS http://127.0.0.1:8050/healthz
-```
-
-Hosted app preflight:
-
-```bash
-python -m server.preflight
-```
-
-Server checks through the deploy channel:
-
-```bash
-systemctl is-active reachly-saas
-journalctl -u reachly-saas -n 100 --no-pager
-```
-
-Browser checks:
-
-1. Open `https://reachly.hygaar.com/login`.
-2. Sign in with an approved Hygaar console account.
-3. Verify `/dashboard` renders schedule and platform credential sections.
-4. Verify `/profile` shows the Hygaar email/account mapping.
-5. Verify `/billing` renders Reachly Pro billing copy.
-6. Save one platform in `off` mode to verify encrypted vault writes without
-   live posting.
-
-## Rollback
-
-Preferred rollback:
-
-1. Revert or select the last known good commit.
-2. Push to `main`.
-3. Let GitHub Actions redeploy.
-4. Re-run post-deploy checks.
-
-Manual server mutation is not part of the normal rollback path.
+If needed, roll back to the documented good revision using the same personal
+deployment path and repeat acceptance checks. Record the outcome in `sessions/`.

@@ -30,18 +30,17 @@ def validate_settings(settings: ServerSettings) -> tuple[list[str], list[str]]:
     if settings.production:
         if not settings.public_base_url.startswith("https://"):
             errors.append("REACHLY_PUBLIC_BASE_URL must be https:// in production.")
-        if not settings.hygaar_api_base_url.startswith("https://"):
+        if settings.legacy_auth_enabled and not settings.hygaar_api_base_url.startswith("https://"):
             errors.append("REACHLY_HYGAAR_API_BASE_URL must be https:// in production.")
         if settings.database_url.startswith("sqlite:///./"):
             warnings.append(
                 "REACHLY_DATABASE_URL uses a relative SQLite path; prefer an absolute "
                 "server path or managed database for production."
             )
-        if settings.telegram_login_enabled:
-            warnings.append(
-                "REACHLY_TELEGRAM_LOGIN_ENABLED is true; Hygaar login should be the "
-                "primary hosted auth path."
-            )
+        if not settings.telegram_login_enabled:
+            errors.append("Personal hosted login requires REACHLY_TELEGRAM_LOGIN_ENABLED=true.")
+        elif not settings.telegram_bot_token or not settings.telegram_bot_username:
+            errors.append("Configure the personal Telegram bot token and username before launch.")
 
     try:
         if settings.vault_key:

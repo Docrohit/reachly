@@ -1,4 +1,4 @@
-"""Validate LinkedIn login + 'post as Hygaar Page' WITHOUT publishing."""
+"""Validate LinkedIn login + 'post as the selected Page' WITHOUT publishing."""
 import sys
 from pathlib import Path
 

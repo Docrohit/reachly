@@ -85,6 +85,9 @@ class AgentConfig:
             content_themes=_split(env.get("CONTENT_THEMES")),
             default_hashtags=_hashtags(env.get("DEFAULT_HASHTAGS")),
             language=env.get("POST_LANGUAGE") or "English",
+            brand_colors=_split(env.get("BRAND_COLORS")),
+            brand_theme=env.get("BRAND_THEME", ""),
+            content_preset=env.get("CONTENT_PRESET") or "business",
         )
 
         # LLM
@@ -97,7 +100,7 @@ class AgentConfig:
 
         # Media
         self.image_provider = (env.get("IMAGE_PROVIDER") or "none").lower()
-        self.gemini_image_model = env.get("GEMINI_IMAGE_MODEL") or "gemini-2.5-flash-image"
+        self.gemini_image_model = env.get("GEMINI_IMAGE_MODEL") or "gemini-3.1-flash-image"
         self.video_provider = (env.get("VIDEO_PROVIDER") or "none").lower()
         self.hygaar_base_url = env.get("HYGAAR_BASE_URL") or None
         self.hygaar_api_token = env.get("HYGAAR_API_TOKEN") or None
@@ -135,7 +138,7 @@ class AgentConfig:
         self.openai_transcription_fallback_model = (
             env.get("REACHLY_OPENAI_TRANSCRIPTION_FALLBACK_MODEL") or "whisper-1"
         )
-        self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), False)
+        self.video_voiceover_enabled = _bool(env.get("REACHLY_VIDEO_VOICEOVER"), True)
         self.video_voiceover_provider = (
             env.get("REACHLY_VIDEO_VOICEOVER_PROVIDER") or "elevenlabs"
         ).lower()
@@ -167,7 +170,7 @@ class AgentConfig:
                 "short_video",
                 "image",
             ]
-        self.brand_logo_path = env.get("BRAND_LOGO_PATH") or None
+        self.brand_logo_path = (env.get("BRAND_LOGO_PATH") or None) if env.get("BRAND_OWNER", "").casefold() == self.business.name.casefold() else None
         self.brand_logo_position = env.get("BRAND_LOGO_POSITION") or "bottom-right"
 
         # Behaviour
@@ -180,7 +183,7 @@ class AgentConfig:
         self.public_media_base_url = env.get("PUBLIC_MEDIA_BASE_URL") or None
         self.public_media_dir = env.get("PUBLIC_MEDIA_DIR") or None
 
-        # Strategy context (Hygaar: point at hdb_backend on server)
+        # Strategy context: explicitly selected personal or business documents
         self.context_repo = env.get("REACHLY_CONTEXT_REPO") or None
         self.agents_md_path = env.get("REACHLY_AGENTS_MD") or None
         self.product_theory_path = env.get("REACHLY_PRODUCT_THEORY_MD") or None

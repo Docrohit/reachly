@@ -2,7 +2,7 @@
 # =====================================================================
 # Reachly — server bootstrap (Ubuntu/Debian).
 # Installs Reachly as its OWN isolated service under /opt/reachly.
-# Does NOT touch hdb_backend or its CodeDeploy pipeline.
+# Isolated personal agent installation.
 #
 # Usage (run from the copied source, e.g. /tmp/reachly):
 #   sudo bash deploy/install_on_server.sh

@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · Reachly{% endblock %}
 {% block content %}
-<h1>Reachly dashboard</h1>
-<p class="muted" style="margin-top:-8px">Configure your Hygaar-owned Reachly account, API credentials, schedule and publishing status.
-  <a href="/dashboard/assets">See generated content</a></p>
+<h1>Reachly dashboard</h1><h2>{{ profile.name if profile else 'Set up your business' }}</h2>
+<p class="muted" style="margin-top:-8px">Configure your Reachly workspace, API credentials, schedule and publishing status.</p>
 
 {% if not user.is_active %}
 <div class="card" style="border-color:var(--brand)">
@@ -14,8 +13,9 @@
 {% endif %}
 
 <div class="card">
-  <h2>Posting schedule</h2>
+  <h2>Posting schedule</h2><p class="muted">Schedules start disabled. For drafts you can review first, use the <a href="/studio">Studio</a>.</p>
   <form method="post" action="/dashboard/settings">
+<label>Automatic schedule</label><select name="scheduler_enabled"><option value="off" {{ 'selected' if not user.scheduler_enabled }}>Off</option><option value="on" {{ 'selected' if user.scheduler_enabled }}>On</option></select>
     <div class="row">
       <div><label>LinkedIn / X slots</label><input name="post_times" value="{{ user.post_times or user.post_time }}" placeholder="09:00,11:30,14:00,16:30,19:00,21:30"/></div>
       <div><label>Instagram offset minutes</label><input name="instagram_offset_minutes" type="number" min="0" max="240" value="{{ user.instagram_offset_minutes }}"/></div>
@@ -62,7 +62,7 @@
   <label>Hook override</label><input id="lfHook" placeholder="Optional opening hook"/>
   <label>Payoff override</label><input id="lfPayoff" placeholder="Optional closing payoff / CTA"/>
   <label style="display:flex;gap:8px;align-items:center;margin-top:10px">
-    <input id="lfPublish" type="checkbox" checked/> Publish after render
+    <input id="lfPublish" type="checkbox"/> Publish after render
   </label>
   <button class="btn primary" style="margin-top:12px" onclick="runLongformVideo()">Run long-form video</button>
   <span id="longformMsg" class="muted"></span>
@@ -83,9 +83,6 @@
     <label>Goals / campaign context</label>
     <textarea name="goals" placeholder="Quarterly focus, ICP, launches, campaign constraints">{{ profile.goals if profile else '' }}</textarea>
     <div class="row">
-      <div><label>Context repo path (optional: AGENTS, product theory, moat docs, business cases; release events use knowledge bank)</label>
-        <input name="context_repo" value="{{ profile.context_repo if profile and profile.context_repo else '' }}"
-          placeholder="/opt/customer-product or /repo/path"/></div>
       <div><label>Posting style</label>
         {% set ps = profile.posting_style if profile else 'thought_leader' %}
         <select name="posting_style">
@@ -107,7 +104,7 @@
 
     <h2 style="margin-top:24px">AI providers (your own keys)</h2>
     <p class="muted">Keys are encrypted. Leave blank to keep what's saved. Plug in your
-      own Gemini/OpenAI/Anthropic keys, or use your Hygaar account for premium media.</p>
+      own Gemini/OpenAI/Anthropic keys for content and media.</p>
     <div class="row">
       <div><label>Text model</label>
         <select name="llm_provider">
@@ -120,7 +117,6 @@
         <select name="image_provider">
           {% set ip = profile.image_provider if profile else 'gemini' %}
           <option value="gemini" {{ 'selected' if ip=='gemini' }}>Gemini (Nano Banana)</option>
-          <option value="hygaar" {{ 'selected' if ip=='hygaar' }}>Hygaar</option>
           <option value="none" {{ 'selected' if ip=='none' }}>None</option>
         </select></div>
       <div><label>Video generation</label>
@@ -128,7 +124,6 @@
           {% set vp = profile.video_provider if profile else 'none' %}
           <option value="none" {{ 'selected' if vp=='none' }}>None</option>
           <option value="seedance" {{ 'selected' if vp=='seedance' }}>Seedance 2.5</option>
-          <option value="hygaar" {{ 'selected' if vp=='hygaar' }}>Hygaar</option>
         </select></div>
     </div>
     <div class="row">
@@ -143,8 +138,6 @@
       <div><label>ElevenLabs output</label><input name="elevenlabs_output_format" placeholder="mp3_44100_128"/></div>
     </div>
     <div class="row">
-      <div><label>Hygaar base URL</label><input name="hygaar_base_url" placeholder="https://dev-genai.hygaar.com"/></div>
-      <div><label>Hygaar API key (X-API-Key)</label><input name="hygaar_api_token" type="password" placeholder="hygaar_••••"/></div>
     </div>
     <div class="row">
       <div><label>Seedance API key</label><input name="seedance_api_key" type="password" placeholder="•••• (saved)"/></div>
@@ -202,7 +195,12 @@
       <div><label>Transcription fallback</label><input name="openai_transcription_fallback_model" placeholder="whisper-1"/></div>
     </div>
     <div class="row">
-      <div><label>Brand logo path</label><input name="brand_logo_path" placeholder="/opt/reachly/assets/hygaar_logo.png"/></div>
+      <div><label>This business's logo (PNG/JPEG, under 2 MB)</label>
+        <input type="file" accept="image/png,image/jpeg" onchange="const f=this.files[0];if(!f)return;if(f.size>2000000){alert('Logo must be under 2 MB');this.value='';return;}const r=new FileReader();r.onload=()=>document.getElementById('business-logo').value=r.result.split(',')[1];r.readAsDataURL(f)"/>
+        <input id="business-logo" name="brand_logo_base64" type="hidden"/>
+        <label><input type="checkbox" name="remove_brand_logo" value="yes"/> Remove saved logo</label></div>
+      <div><label>Business colours (hex, comma separated)</label><input name="brand_colors" value="{{ brand_settings.get('brand_colors', '') }}" placeholder="#123456, #abcdef"/></div>
+      <div><label>Visual theme</label><input name="brand_theme" value="{{ brand_settings.get('brand_theme', '') }}" placeholder="Describe this business's visual style"/></div>
       <div><label>Logo position</label>
         <select name="brand_logo_position">
           <option value="bottom-right">Bottom right</option>
@@ -249,7 +247,7 @@
         <label>Access token (API mode)</label><input name="access_token" type="password" placeholder="•••• (saved)"/>
         <label>Person URN (optional)</label><input name="person_urn" placeholder="urn:li:person:..."/>
         <label>Organization ID (API mode, company page)</label><input name="organization_id" placeholder="123456789 or urn:li:organization:123456789"/>
-        <label>Company page name (feed composer fallback)</label><input name="post_as" placeholder="Exact page name, e.g. HyGaar"/>
+        <label>Company page name (feed composer fallback)</label><input name="post_as" placeholder="Exact name of your company page"/>
         <label>Company admin URL (browser mode preferred)</label>
         <input name="company_admin_url" placeholder="https://www.linkedin.com/company/.../admin/"/>
         <div class="row">
@@ -295,7 +293,7 @@
               <option value="true">Yes</option>
             </select></div>
         </div>
-        <label>Default tags</label><input name="youtube_default_tags" placeholder="Hygaar, AI product photography"/>
+        <label>Default tags</label><input name="youtube_default_tags" placeholder="Your brand, your topics"/>
       {% endif %}
       <button class="btn primary" style="margin-top:12px" type="submit">Save {{ p }}</button>
     </form>

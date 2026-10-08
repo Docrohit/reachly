@@ -10,7 +10,11 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/reachly-saas}"
 SERVICE_USER="${SERVICE_USER:-reachly}"
-REACHLY_DOMAIN="${REACHLY_DOMAIN:-reachly.hygaar.com}"
+REACHLY_DOMAIN="${REACHLY_DOMAIN:-reachly.nftforger.com}"
+if [ "$REACHLY_DOMAIN" != "reachly.nftforger.com" ]; then
+  echo "Provide reviewed nginx configuration for the selected personal domain." >&2
+  exit 1
+fi
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo ">> Reachly SaaS install starting"
@@ -33,6 +37,11 @@ rsync -a --delete \
   --exclude '.venv' \
   --exclude '.env' \
   --exclude '.reachly_data' \
+  --exclude '.reachly_generation' \
+  --exclude 'data' \
+  --exclude 'agents' \
+  --exclude '*.db' \
+  --exclude 'brands' \
   --exclude 'reachly_media' \
   --exclude '__pycache__' \
   --exclude '*.pyc' \
@@ -54,14 +63,12 @@ chmod 600 "$APP_DIR/.env"
 
 echo ">> installing systemd unit reachly-saas.service"
 cp "$APP_DIR/deploy/reachly-saas.service" /etc/systemd/system/reachly-saas.service
+sed -i "s|/opt/reachly-saas|$APP_DIR|g; s|User=reachly|User=$SERVICE_USER|g; s|Group=reachly|Group=$SERVICE_USER|g" /etc/systemd/system/reachly-saas.service
 systemctl daemon-reload
 
 echo ">> installing nginx vhost when nginx is present"
 if command -v nginx >/dev/null 2>&1; then
-  if [ "$REACHLY_DOMAIN" = "reachly.hygaar.com" ]; then
-    cp "$APP_DIR/deploy/nginx/reachly.hygaar.com.conf" /etc/nginx/sites-available/reachly.hygaar.com
-    ln -sf /etc/nginx/sites-available/reachly.hygaar.com /etc/nginx/sites-enabled/reachly.hygaar.com
-  elif [ -f /etc/letsencrypt/live/reachly.nftforger.com/fullchain.pem ]; then
+  if [ -f /etc/letsencrypt/live/reachly.nftforger.com/fullchain.pem ]; then
     cp "$APP_DIR/deploy/nginx/reachly.nftforger.com.ssl.conf" /etc/nginx/sites-available/reachly.nftforger.com
     ln -sf /etc/nginx/sites-available/reachly.nftforger.com /etc/nginx/sites-enabled/reachly.nftforger.com
   else

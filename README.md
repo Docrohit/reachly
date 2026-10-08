@@ -13,25 +13,30 @@ It ships in two shapes from one codebase:
 | | What it is | Who runs it |
 |---|---|---|
 | **Standalone agent** | A single `.py` agent driven by a `.env` file | The customer, on their own server |
-| **Hosted SaaS** | Multi-tenant web app with Hygaar console login, a credential vault, billing, and a per-user scheduler | You |
+| **Hosted SaaS** | Multi-tenant web app with personal Telegram login, a credential vault, billing, and a per-user scheduler | You |
 
-## Hygaar Product
+## Personal Reachly
 
-Reachly is being productized as a Hygaar-owned app, but it remains a separate
-repo and deployment from `hdb_backend` and `console_live`.
+Rohit's original personal product, with the later generation upgrades retained.
+Canonical repository: `Docrohit/reachly`. Reachly owns generation, publishing,
+and performance feedback for any project, business, or service.
 
-- Hosted URL target: `https://reachly.hygaar.com`
-- App service target: `/opt/reachly-saas`, systemd `reachly-saas`
-- Login: Hygaar console email/password through the Hygaar backend auth API
-- Local app data: Reachly SQLModel DB keyed by Hygaar `Account.user_id`
-- Platform setup: API-first credentials per platform, with Playwright browser
-  fallback where official APIs are unavailable or not approved
+Start with `AGENTS.md`, `product_theory.md`, `business_goals.md`, and
+[`current status`](docs/PERSONAL_REACHLY_STATUS.md). Copied integration history
+lives in `docs/archive/` and is not the personal product roadmap.
+The personal hosted target is `https://reachly.nftforger.com`.
 
-See [`docs/HYGAAR_PRODUCTIZATION.md`](docs/HYGAAR_PRODUCTIZATION.md) for the
-current acquisition architecture and CI/CD setup, and
-[`docs/HYGAAR_ACQUISITION_AUDIT.md`](docs/HYGAAR_ACQUISITION_AUDIT.md) for the
-lineage/deployment evidence log. Release steps live in
-[`docs/RELEASE_RUNBOOK.md`](docs/RELEASE_RUNBOOK.md).
+Use **Businesses** to create or switch workspaces; **Studio** to save project or
+SaaS2point0 inputs, run sourced web research, generate drafts, and explicitly
+publish one to your connected account; **Settings** to add provider/platform keys
+and opt into scheduling; **Analytics** to enter measured performance that informs
+future generation. **Assets** restores the personal image/video library.
+
+Each business owns its credentials, context, drafts and history. Automatic
+platform analytics retrieval is not yet connected; imported/pasted or manually
+entered metrics are supported. No SaaS2point0 API connector is claimed: paste its
+output into project inputs. Research/generation use your own configured keys.
+
 
 ---
 
@@ -42,14 +47,13 @@ lineage/deployment evidence log. Release steps live in
   against recent posts so it never repeats itself.
 - **Current context**: reads dashboard goals plus current repo docs before each
   generation: `AGENTS.md`, `product_theory.md`, `business_goals.md`,
-  `docs/HYGAAR_MOAT_ARCHITECTURE_2026.md`, `docs/DOC_INDEX_CURRENT.md`, and
+  `docs/PRODUCT_ARCHITECTURE.md`, `docs/DOC_INDEX_CURRENT.md`, and
   `Business_cases*.csv` when present. It also reads `knowledge_bank.md` release
   events and explicit `.md`, `.csv`, `.txt`, or `.docx` docs such as a moat
   document passed through `REACHLY_CONTEXT_DOCS`. This keeps posts and videos
-  aligned with updated Hygaar moat/feature/business-case material without a
+  aligned with your selected product and business material without a
   service restart.
-- **Media**: generates an image per post with **Gemini ("Nano Banana")**, or with
-  your **Hygaar** account (image *and* video). Bring your own keys.
+- **Media**: generates an image per post with **Gemini ("Nano Banana")**, using your own provider keys.
 - **Long-form**: writes a full **Medium article** (title, subtitle, 850–1300 word
   body, tags) with a **16:9 image**, de-duped against recent article openings.
 - **Narration-led video**: creates 60-120s 16:9 videos from the daily post theme
@@ -64,20 +68,17 @@ lineage/deployment evidence log. Release steps live in
   LinkedIn and Instagram can run on a **staggered schedule** — e.g. Instagram
   **5 minutes after each LinkedIn slot**, reusing the same caption and generating
   an image from the LLM's text prompt. **Medium runs on its own independent slots**
-  (`MEDIUM_TIMES`, default two per day), separate from the social stagger.
+  (`MEDIUM_TIMES`, configurable independently), separate from the social stagger.
 - **Safety**: starts in **dry-run** so you can preview before going live.
 
-## 🔌 Media generation is pluggable (3 ways to integrate Hygaar)
+## Media and context
 
-1. **Independent (default)** — each user brings their **own** Gemini / OpenAI /
-   Anthropic keys. Zero Hygaar dependency.
-2. **Hygaar as a plugin** — set `IMAGE_PROVIDER=hygaar` (and/or
-   `VIDEO_PROVIDER=hygaar`) and give Reachly a Hygaar `X-API-Key`. Reachly calls
-   Hygaar's `/api/batch/generate-images/` → polls `/api/batch/generation-status/`.
-3. **Reachly inside Hygaar** — the agent core (`reachly.agent.Agent`) is a plain
-   library, so Hygaar can import it and drive posting directly.
+Use your own Gemini, OpenAI, Anthropic, Seedance, or ElevenLabs credentials for
+the features you enable. Uploaded/pasted business material, project information,
+research sources, and measured performance should guide generation. Explicitly
+selected standalone repo context stays within that repo. Hosted users cannot
+select arbitrary server files.
 
-> Reachly never modifies Hygaar. It only **calls Hygaar's public APIs**.
 
 ---
 
@@ -101,7 +102,7 @@ python -m reachly.runner once                 # all enabled platforms, one shot
 python -m reachly.runner seedance-account-check  # minimal ModelArk activation/billing probe
 python -m reachly.runner linkedin --media-kind video --video-strategy recap  # LinkedIn-first Seedance video test
 python -m reachly.runner longform-video-preflight # check long-form video dependencies
-python -m reachly.runner longform-video --theme "Why Hygaar beats in-house AI media"
+python -m reachly.runner longform-video --theme "How our product saves a founder time"
 python -m reachly.runner knowledge-event --kb-title "Prod update" --kb-summary "What changed and why it matters"
 python -m reachly.runner instagram            # test Instagram slot (image + post)
 python -m reachly.runner medium               # test Medium article slot (16:9 image + article)
@@ -150,7 +151,7 @@ YOUTUBE_CLIENT_SECRET="..."
 
 YouTube uploads require OAuth scope
 `https://www.googleapis.com/auth/youtube.upload`; API keys and service accounts
-are not enough for uploading to the Hygaar channel. Reachly marks API uploads
+are not enough for uploading to your YouTube channel. Reachly marks API uploads
 as `selfDeclaredMadeForKids=false` and `containsSyntheticMedia=true`.
 
 With the defaults above (Asia/Kolkata):
@@ -196,7 +197,7 @@ Hosted Reachly also exposes `POST /internal/knowledge-events` when
 prod is updated:
 
 ```bash
-curl -X POST "https://reachly.hygaar.com/internal/knowledge-events" \
+curl -X POST "https://reachly.nftforger.com/internal/knowledge-events" \
   -H "Content-Type: application/json" \
   -H "X-Reachly-Knowledge-Secret: $REACHLY_KNOWLEDGE_EVENT_SECRET" \
   -d '{"source":"github_actions","environment":"prod","title":"Prod update","summary":"Summarize the user-visible features and moat impact here.","commit_sha":"'"$GITHUB_SHA"'"}'
@@ -227,8 +228,8 @@ python -m server.preflight
 Then open the site:
 
 1. **Landing page** → *Get started*.
-2. **Hygaar login**: the user signs in with their Hygaar console email/password.
-   Legacy Telegram OTP can be enabled for old self-host/SaaS experiments.
+2. **Telegram login**: open your configured Reachly bot, tap Start, and request
+   a one-time sign-in code. Configure your own bot before enabling hosted login.
 3. **Dashboard**: they fill in their business, paste their **own** AI keys, connect
    each platform (API or browser), pick a daily time, and toggle dry-run → live.
 4. **Run now** to test instantly, or let the per-minute scheduler post at their time.
@@ -250,14 +251,14 @@ Docker: `cd deploy && docker compose up --build`.
 
 | Platform | API mode needs | Browser mode needs |
 |---|---|---|
-| **X / Twitter** | OAuth2 user token (`tweet.write`, `media.write`). Note: X has no free tier in 2026 (pay-per-use ~$0.01/post). | username + password; optional login email/phone for X checkpoints |
+| **X / Twitter** | OAuth2 user token (`tweet.write`, `media.write`). Note: Check your developer account for current access and pricing. | username + password; optional login email/phone for X checkpoints |
 | **LinkedIn** | `w_member_social` access token for personal posts; `w_organization_social` + organization id for company pages. Partner verification required. | email + password; optional company page name or admin URL |
 | **Instagram** | Business account, Graph API token + IG user id, and a **public** image/video URL (the hosted server provides one). | username + password; generated image posts or video/Reels uploads |
 | **Medium** | Public API not reliable for new integrations — **browser mode only**. | email + password; **16:9 image required**; `MEDIUM_PUBLISH_STATUS` = `draft` or `public`; optional `MEDIUM_EXPECTED_ACCOUNT` guard |
 | **YouTube** | OAuth refresh token/client for scope `https://www.googleapis.com/auth/youtube.upload`; uploads use resumable `videos.insert`. | Not supported |
 
-Because API approval can take weeks (and X now charges), **browser mode** lets users
-start posting immediately; they can upgrade to API mode later.
+Use the API access available to your account, or an authenticated browser session
+where supported. Account setup and publication must be verified per platform.
 
 **Instagram browser tips:** Prime the session once (login + phone approval if prompted).
 Video posts prefer `/reels/create/` and fall back through the standard create
@@ -274,7 +275,7 @@ reachly/            # the agent core — no server dependency
   models.py         # BusinessProfile, PlatformCredentials, GeneratedPost ...
   llm.py            # Gemini / OpenAI / Anthropic text generation
   content.py        # theme rotation + post generation
-  media.py          # Gemini image gen, Seedance, ElevenLabs, Hygaar client
+  media.py          # Gemini image gen, Seedance, ElevenLabs, legacy adapters
   longform_video.py # 90s narration-led video pipeline + QC retries
   platforms/        # twitter / linkedin / instagram / medium / youtube
   agent.py          # harness: run_linkedin_slot / run_instagram_slot / run_medium_slot / run_longform_video_slot
@@ -284,7 +285,7 @@ reachly/            # the agent core — no server dependency
 
 server/             # the multi-tenant SaaS
   app.py            # FastAPI: auth, dashboard, billing, media hosting
-  telegram_bot.py   # legacy /start + OTP login (long-polling, optional)
+  telegram_bot.py   # /start + OTP login (long-polling, optional)
   db.py             # SQLModel tables
   crypto.py         # Fernet credential vault
   orchestrator.py   # DB rows -> Agent, per-minute scheduler

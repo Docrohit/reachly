@@ -6,7 +6,7 @@ from reachly.models import BusinessProfile, GeneratedMedia, GeneratedPost
 
 def _agent(tmp_path, *, api_key="openai-key"):
     return Agent(
-        BusinessProfile(name="Hygaar"),
+        BusinessProfile(name="Hygaar", content_preset="hygaar"),
         {},
         AgentSettings(
             data_dir=tmp_path,
@@ -20,7 +20,7 @@ def _agent(tmp_path, *, api_key="openai-key"):
 
 def _elevenlabs_agent(tmp_path, *, api_key="eleven-key"):
     return Agent(
-        BusinessProfile(name="Hygaar"),
+        BusinessProfile(name="Hygaar", content_preset="hygaar"),
         {},
         AgentSettings(
             data_dir=tmp_path,
@@ -32,26 +32,6 @@ def _elevenlabs_agent(tmp_path, *, api_key="eleven-key"):
             spoken_brand_name="Haigaar",
         ),
     )
-
-
-def test_agent_keeps_silent_video_by_default(tmp_path):
-    video = tmp_path / "video.mp4"
-    video.write_bytes(b"video")
-
-    agent = Agent(
-        BusinessProfile(name="BrightSmile Dental Studio"),
-        {},
-        AgentSettings(data_dir=tmp_path, dry_run=True),
-    )
-    post = GeneratedPost(theme="clinic tour", hook="Hook", body="Body")
-    media = GeneratedMedia(kind="video", local_path=str(video))
-
-    with patch("reachly.agent.add_elevenlabs_voiceover") as add_voiceover:
-        result = agent._add_video_voiceover_if_needed(post, media)
-
-    assert result is media
-    add_voiceover.assert_not_called()
-    agent.close()
 
 
 def test_agent_adds_voiceover_when_generated_video_is_silent(tmp_path):

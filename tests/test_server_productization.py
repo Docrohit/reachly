@@ -14,6 +14,8 @@ class ServerProductizationTests(unittest.TestCase):
     def tearDown(self):
         os.environ.clear()
         os.environ.update(self._env)
+        from server.settings import get_settings
+        get_settings.cache_clear()
 
     def test_production_rejects_free_mode_without_secrets(self):
         from server.settings import ServerSettings
@@ -128,6 +130,10 @@ class ServerProductizationTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_hygaar_login_bridge_returns_tokens_and_user(self):
+        os.environ["REACHLY_LEGACY_AUTH_ENABLED"] = "true"
+        os.environ["REACHLY_HYGAAR_API_BASE_URL"] = "https://identity.example.com"
+        from server.settings import get_settings
+        get_settings.cache_clear()
         from server.hygaar_auth import login_with_hygaar
 
         class Response:
@@ -158,6 +164,10 @@ class ServerProductizationTests(unittest.TestCase):
         self.assertEqual(payload["password"], "secret")
 
     def test_hygaar_login_bridge_surfaces_auth_failure(self):
+        os.environ["REACHLY_LEGACY_AUTH_ENABLED"] = "true"
+        os.environ["REACHLY_HYGAAR_API_BASE_URL"] = "https://identity.example.com"
+        from server.settings import get_settings
+        get_settings.cache_clear()
         from server.hygaar_auth import HygaarAuthError, login_with_hygaar
 
         class Response:
@@ -217,6 +227,10 @@ class ServerProductizationTests(unittest.TestCase):
         self.assertNotIn("secret", message)
 
     def test_hygaar_login_route_creates_reachly_session(self):
+        os.environ["REACHLY_LEGACY_AUTH_ENABLED"] = "true"
+        os.environ["REACHLY_HYGAAR_API_BASE_URL"] = "https://identity.example.com"
+        from server.settings import get_settings
+        get_settings.cache_clear()
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "reachly.db"
             env = os.environ.copy()
@@ -266,6 +280,10 @@ class ServerProductizationTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_profile_and_billing_pages_require_session_and_render_for_hygaar_user(self):
+        os.environ["REACHLY_LEGACY_AUTH_ENABLED"] = "true"
+        os.environ["REACHLY_HYGAAR_API_BASE_URL"] = "https://identity.example.com"
+        from server.settings import get_settings
+        get_settings.cache_clear()
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "reachly.db"
             env = os.environ.copy()
@@ -382,6 +400,10 @@ class ServerProductizationTests(unittest.TestCase):
         self.assertEqual(creds.extra["organization_id"], "123456")
 
     def test_saas_orchestrator_can_use_server_env_for_hygaar_pro_users(self):
+        os.environ["REACHLY_LEGACY_AUTH_ENABLED"] = "true"
+        os.environ["REACHLY_HYGAAR_API_BASE_URL"] = "https://identity.example.com"
+        from server.settings import get_settings
+        get_settings.cache_clear()
         from reachly.models import Platform, PlatformMode
         from server.db import User
         from server.orchestrator import (

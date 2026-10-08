@@ -1,24 +1,14 @@
-name: Reachly CI/CD
+name: Personal Reachly CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main, "codex/**"]
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: "Deploy reachly-saas after tests pass"
-        required: true
-        default: false
-        type: boolean
-      target:
-        description: "Deployment target"
-        required: true
-        default: saas
-        type: choice
-        options:
-          - saas
-          - agent
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -45,146 +35,3 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m pytest tests -q
-
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy == true
-    environment: production
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure SSH
-        env:
-          REACHLY_DEPLOY_SSH_KEY: ${{ secrets.REACHLY_DEPLOY_SSH_KEY }}
-          REACHLY_DEPLOY_HOST: ${{ secrets.REACHLY_DEPLOY_HOST }}
-          REACHLY_DEPLOY_USER: ${{ secrets.REACHLY_DEPLOY_USER }}
-          REACHLY_BASTION_HOST: ${{ secrets.REACHLY_BASTION_HOST }}
-          REACHLY_BASTION_USER: ${{ secrets.REACHLY_BASTION_USER }}
-          REACHLY_BASTION_SSH_KEY: ${{ secrets.REACHLY_BASTION_SSH_KEY }}
-        run: |
-          test -n "$REACHLY_DEPLOY_SSH_KEY"
-          test -n "$REACHLY_DEPLOY_HOST"
-          mkdir -p ~/.ssh
-          printf '%s\n' "$REACHLY_DEPLOY_SSH_KEY" > ~/.ssh/reachly_deploy_key
-          chmod 600 ~/.ssh/reachly_deploy_key
-          if [ -n "$REACHLY_BASTION_HOST" ]; then
-            test -n "$REACHLY_BASTION_SSH_KEY"
-            printf '%s\n' "$REACHLY_BASTION_SSH_KEY" > ~/.ssh/reachly_bastion_key
-            chmod 600 ~/.ssh/reachly_bastion_key
-            cat > ~/.ssh/config <<EOF
-          Host reachly-bastion
-            HostName $REACHLY_BASTION_HOST
-            User ${REACHLY_BASTION_USER:-ubuntu}
-            IdentityFile ~/.ssh/reachly_bastion_key
-            StrictHostKeyChecking accept-new
-
-          Host reachly-target
-            HostName $REACHLY_DEPLOY_HOST
-            User ${REACHLY_DEPLOY_USER:-ubuntu}
-            IdentityFile ~/.ssh/reachly_deploy_key
-            ProxyJump reachly-bastion
-            StrictHostKeyChecking accept-new
-          EOF
-          else
-            cat > ~/.ssh/config <<EOF
-          Host reachly-target
-            HostName $REACHLY_DEPLOY_HOST
-            User ${REACHLY_DEPLOY_USER:-ubuntu}
-            IdentityFile ~/.ssh/reachly_deploy_key
-            StrictHostKeyChecking accept-new
-          EOF
-          fi
-
-      - name: Sync source
-        env:
-          REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
-          REACHLY_DEPLOY_TARGET: ${{ inputs.target }}
-        run: |
-          if [ "$REACHLY_DEPLOY_TARGET" = "agent" ]; then
-            TARGET_PATH="/opt/reachly"
-          else
-            TARGET_PATH="${REACHLY_DEPLOY_PATH:-/opt/reachly-saas}"
-          fi
-          rsync -az --delete \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude '.env' \
-            --exclude '.venv' \
-            --exclude '.reachly_data' \
-            --exclude 'reachly_media' \
-            --exclude '*.db' \
-            --exclude '__pycache__' \
-            --exclude '*.pyc' \
-            -e "ssh" \
-            ./ reachly-target:/tmp/reachly_src/
-          ssh reachly-target \
-            "set -e
-            sudo id reachly >/dev/null 2>&1 || sudo useradd --system --create-home --shell /usr/sbin/nologin reachly
-            sudo mkdir -p '$TARGET_PATH' && sudo rsync -a --delete \
-              --exclude '.env' \
-              --exclude '.venv' \
-              --exclude '.reachly_data' \
-              --exclude 'agents' \
-              --exclude 'data' \
-              --exclude 'reachly_media' \
-              --exclude '*.db' \
-              /tmp/reachly_src/ '$TARGET_PATH/' && sudo chown -R reachly:reachly '$TARGET_PATH'"
-
-      - name: Install dependencies and restart service
-        env:
-          REACHLY_DEPLOY_PATH: ${{ secrets.REACHLY_DEPLOY_PATH }}
-          REACHLY_DEPLOY_TARGET: ${{ inputs.target }}
-        run: |
-          if [ "$REACHLY_DEPLOY_TARGET" = "agent" ]; then
-            TARGET_PATH="/opt/reachly"
-          else
-            TARGET_PATH="${REACHLY_DEPLOY_PATH:-/opt/reachly-saas}"
-          fi
-          ssh reachly-target "
-            set -e
-            sudo test -f '$TARGET_PATH/.env'
-            sudo python3 -m venv '$TARGET_PATH/.venv'
-            sudo '$TARGET_PATH/.venv/bin/pip' install --upgrade pip -q
-            sudo '$TARGET_PATH/.venv/bin/pip' install -q -r '$TARGET_PATH/requirements.txt'
-            sudo '$TARGET_PATH/.venv/bin/python' -m playwright install-deps chromium
-            sudo -u reachly -H '$TARGET_PATH/.venv/bin/python' -m playwright install chromium
-            if [ '$REACHLY_DEPLOY_TARGET' = 'agent' ]; then
-              sudo cp '$TARGET_PATH/deploy/reachly-agent.service' /etc/systemd/system/reachly-agent.service
-              sudo cp '$TARGET_PATH/deploy/reachly-dashboard.service' /etc/systemd/system/reachly-dashboard.service
-              sudo sed -i 's|/opt/reachly|$TARGET_PATH|g' /etc/systemd/system/reachly-agent.service
-              sudo sed -i 's|/opt/reachly|$TARGET_PATH|g' /etc/systemd/system/reachly-dashboard.service
-              sudo systemctl daemon-reload
-              sudo systemctl enable reachly-agent.service
-              sudo systemctl enable reachly-dashboard.service
-              sudo systemctl restart reachly-agent.service
-              sudo systemctl restart reachly-dashboard.service
-              sudo systemctl is-active reachly-agent.service
-              sudo systemctl is-active reachly-dashboard.service
-            else
-              sudo cp '$TARGET_PATH/deploy/reachly-saas.service' /etc/systemd/system/reachly-saas.service
-              sudo sed -i 's|/opt/reachly-saas|$TARGET_PATH|g' /etc/systemd/system/reachly-saas.service
-              if command -v nginx >/dev/null 2>&1; then
-                sudo cp '$TARGET_PATH/deploy/nginx/reachly.hygaar.com.conf' /etc/nginx/sites-available/reachly.hygaar.com.conf
-                sudo ln -sf /etc/nginx/sites-available/reachly.hygaar.com.conf /etc/nginx/sites-enabled/reachly.hygaar.com.conf
-                sudo rm -f /etc/nginx/sites-enabled/reach.hygaar.com.conf
-                sudo nginx -t
-                sudo systemctl reload nginx
-              fi
-              sudo systemctl daemon-reload
-              sudo systemctl enable reachly-saas.service
-              sudo systemctl restart reachly-saas.service
-              sudo systemctl is-active reachly-saas.service
-            fi
-          "
-
-      - name: Smoke test
-        env:
-          REACHLY_DEPLOY_TARGET: ${{ inputs.target }}
-        run: |
-          if [ "$REACHLY_DEPLOY_TARGET" = "agent" ]; then
-            ssh reachly-target "systemctl is-active reachly-agent.service && systemctl is-active reachly-dashboard.service"
-          else
-            ssh reachly-target "curl -fsS http://127.0.0.1:8050/healthz"
-          fi

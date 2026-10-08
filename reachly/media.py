@@ -491,7 +491,7 @@ def generate_image_gemini(
     prompt: str,
     *,
     api_key: Optional[str],
-    model: str = "gemini-2.5-flash-image",
+    model: str = "gemini-3.1-flash-image",
     out_dir: Path,
     logo_path: Optional[str] = None,
     logo_position: str = "bottom-right",
@@ -502,8 +502,10 @@ def generate_image_gemini(
     client = genai.Client(api_key=api_key)
     full_prompt = (
         f"{prompt}\n\nStyle: clean, professional, social-media ready, "
-        f"no text, no watermark, no fake logo. Leave clean corner space for "
-        f"the provided brand logo. Aspect ratio roughly {aspect_ratio}."
+        f"no text, no watermark, no generated logo or logo placeholder. "
+        f"Compose a finished image without empty corner boxes or reserved logo areas. "
+        f"Any supplied logo is composited separately, never drawn by the model. "
+        f"Aspect ratio roughly {aspect_ratio}."
     )
     resp = client.models.generate_content(model=model, contents=[full_prompt])
 

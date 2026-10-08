@@ -1,3 +1,6 @@
+> Historical copied documentation. Not an active personal Reachly plan,
+> deployment runbook, or authorization. See ../PERSONAL_REACHLY_STATUS.md.
+
 # Reachly Hygaar Productization
 
 Status: in progress

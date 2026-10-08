@@ -23,6 +23,7 @@ class Platform(str, Enum):
     twitter = "twitter"
     linkedin = "linkedin"
     instagram = "instagram"
+    facebook = "facebook"
     medium = "medium"
     youtube = "youtube"
 
@@ -40,6 +41,9 @@ class BusinessProfile(BaseModel):
     content_themes: list[str] = Field(default_factory=list)
     default_hashtags: list[str] = Field(default_factory=list)
     language: str = "English"
+    brand_colors: list[str] = Field(default_factory=list)
+    brand_theme: str = ""
+    content_preset: str = "business"
 
     def themes_or_default(self) -> list[str]:
         return self.content_themes or [
