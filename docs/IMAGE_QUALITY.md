@@ -72,7 +72,8 @@ recorded as disabled, never passed.
 Service jobs: `REACHLY_GENERATION_DATA/<job_uuid>/`, private from the public media mount.
 Each candidate has `<candidate_uuid>.audit.json`, `.raw.png`, `.png` and reference copies.
 `text-prompts.json` records exact topic, copy and visual-planning calls before provider use.
-The job result preserves sourced research/evidence. The image audit preserves review prompts.
+The job result preserves sourced research/evidence; `research.audit.json` records the search
+prompt, model, tool settings and whether evidence came from cache. The image audit preserves review prompts.
 No provider keys or API tokens are written to these records. Inputs are customer data, so
 protect backups and restrict file access. Records currently require operator-managed retention;
 no automatic deletion or regeneration occurs.
@@ -104,3 +105,11 @@ actual pixels, references, typography, audit records and the final review. Neith
 CI nor a health response proves visual quality. Existing clinic approval and publishing flows
 remain the caller's responsibility. New reference/layout controls in a Hyclinics UI are a
 separate caller integration; the work service's v4 API already accepts them.
+
+## Prompt source map
+
+- `reachly/content.py`: copy system/user templates and business image constraints.
+- `reachly/generation_worker.py`: topic planning, research prompt and context assembly.
+- `reachly/visual.py`: visual director and image-review system prompts, final image brief assembly.
+- `reachly/media.py`: final image-provider suffix and explicit provider configuration.
+- Per-job `text-prompts.json` and audit JSON contain the exact assembled calls for that job.

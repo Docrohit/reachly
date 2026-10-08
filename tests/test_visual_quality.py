@@ -135,3 +135,19 @@ def test_preflight_rejects_unavailable_unicode_font(monkeypatch):
     monkeypatch.delenv('REACHLY_LAYOUT_FONT', raising=False)
     with pytest.raises(ValueError):
         visual.validate_options(visual.VisualOptions(layout=visual.Layout(headline='नमस्ते')), 'test')
+
+
+def test_research_trace_distinguishes_cache_and_provider_without_keys(tmp_path, monkeypatch):
+    from reachly import generation_worker as worker
+    monkeypatch.setenv('REACHLY_GENERATION_DATA', str(tmp_path))
+    request = GenerationRequest(business_id='bakery', business=BusinessProfile(name='Bakery'), source_version='v1')
+    provider = {'gemini_api_key':'synthetic-secret','research_model':'search-model'}
+    evidence = {'sources':[{'url':'https://example.test'}],'findings':[{'summary':'Bread'}]}
+    with patch.object(worker, 'research_business', return_value=evidence) as search:
+        worker.cached_research({'owner':'one','id':'first'}, request, provider)
+        worker.cached_research({'owner':'one','id':'second'}, request, provider)
+    first = json.loads((tmp_path/'first/research.audit.json').read_text())
+    second = json.loads((tmp_path/'second/research.audit.json').read_text())
+    assert first['state'] == 'completed' and second['state'] == 'cache_hit'
+    assert search.call_count == 1 and first['model'] == 'search-model'
+    assert 'Bakery' in first['prompt'] and 'synthetic-secret' not in json.dumps(first)

@@ -23,7 +23,7 @@ No work credentials, account data or deployment configuration were copied.
 
 ## Verification
 
-- Full suite: 214 passed and one subtest; compilation and diff checks passed.
+- Full suite: 215 passed and one subtest; compilation and diff checks passed.
 - Includes provider-payload pixels/config, 4K portrait dimensions, review failure/uncertainty,
   original-image edits preserving copy, token rotation/revocation/scope, UUID replay, input
   validation before provider use, hourly limits and competing atomic claims.
@@ -52,3 +52,6 @@ Legacy article/video and external media paths are not fully migrated to the new 
 Review the PR and its CI, then use the personal release runbook if deploying. Check /api-access
 and one scoped curl request. Verify an actual generated image and image-only revision using
 personal keys, including failed-review behavior and saved audit. Keep platform schedules unchanged.
+
+Review PR: https://github.com/Docrohit/reachly/pull/3
+Search prompt/model/tool settings and cache provenance are also saved in research.audit.json.
