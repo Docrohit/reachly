@@ -79,7 +79,7 @@ def claim():
         db.execute("BEGIN IMMEDIATE")
         # A lost worker may have incurred provider charges; do not blindly replay it.
         db.execute("UPDATE jobs SET state='needs_attention' WHERE state='running' AND updated<?", (time.time()-1800,))
-        row = db.execute("SELECT * FROM jobs WHERE state='queued' ORDER BY updated LIMIT 1").fetchone()
+        row = db.execute("SELECT * FROM jobs WHERE state='queued' AND provider!='personal-workspace' ORDER BY updated LIMIT 1").fetchone()
         if not row:
             return None
         db.execute("UPDATE jobs SET state='running',updated=? WHERE id=?", (time.time(), row["id"]))

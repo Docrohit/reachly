@@ -487,6 +487,14 @@ def _video_duration(path: Path) -> float:
 # ----------------------------------------------------------------------
 # Gemini image generation (Nano Banana)
 # ----------------------------------------------------------------------
+def image_prompt_text(prompt, aspect_ratio):
+    return (f"{prompt}\n\nStyle: clean, professional, social-media ready, "
+        "no text, no watermark, no generated logo or logo placeholder. "
+        "Compose a finished image without empty corner boxes or reserved logo areas. "
+        "Any supplied logo is composited separately, never drawn by the model. "
+        f"Aspect ratio {aspect_ratio}.")
+
+
 def generate_image_gemini(
     prompt: str,
     *,
@@ -496,18 +504,28 @@ def generate_image_gemini(
     logo_path: Optional[str] = None,
     logo_position: str = "bottom-right",
     aspect_ratio: str = "1:1",
+    image_size: str = "1K",
+    reference_images: Optional[list] = None,
 ) -> GeneratedMedia:
     from google import genai
+    from google.genai import types
 
     client = genai.Client(api_key=api_key)
-    full_prompt = (
-        f"{prompt}\n\nStyle: clean, professional, social-media ready, "
-        f"no text, no watermark, no generated logo or logo placeholder. "
-        f"Compose a finished image without empty corner boxes or reserved logo areas. "
-        f"Any supplied logo is composited separately, never drawn by the model. "
-        f"Aspect ratio roughly {aspect_ratio}."
-    )
-    resp = client.models.generate_content(model=model, contents=[full_prompt])
+    full_prompt = image_prompt_text(prompt, aspect_ratio)
+    contents = [full_prompt]
+    for ref in reference_images or []:
+        contents += ["Reference role: " + ref["role"] + "; " + ref.get("label", ""),
+                     types.Part.from_bytes(data=ref["data"], mime_type="image/png")]
+    image_config = {"aspect_ratio": aspect_ratio}
+    # Legacy 2.5 only supports its native 1K resolution. Never silently downgrade 2K/4K.
+    if "2.5-flash-image" in model:
+        if image_size != "1K":
+            raise ValueError("Selected image model supports only native 1K output")
+    else:
+        image_config["image_size"] = image_size
+    resp = client.models.generate_content(model=model, contents=contents,
+        config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"],
+            image_config=types.ImageConfig(**image_config)))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"image_{int(time.time())}_{uuid.uuid4().hex[:8]}.png"
@@ -521,7 +539,7 @@ def generate_image_gemini(
                 kind="image",
                 local_path=str(path),
                 mime_type=inline.mime_type or "image/png",
-                prompt=prompt,
+                prompt=full_prompt,
             )
     raise RuntimeError("Gemini returned no image data for the prompt.")
 

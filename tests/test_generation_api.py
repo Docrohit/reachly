@@ -27,6 +27,12 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("TEST_GENERATION_TOKEN", "fictional-service-secret")
     monkeypatch.setenv("TEST_OTHER_TOKEN", "fictional-other-secret")
     monkeypatch.setenv("TEST_PROVIDER_KEY", "fictional-provider-key")
+    from reachly import visual
+    monkeypatch.setattr(visual, "plan_visual", lambda llm, context: {
+        "subject": "Illustrative business scene", "composition": "One clear subject", "lighting": "Natural",
+        "palette": "Business palette", "reference_usage": "Use supplied references", "avoid": "Unsupported claims"})
+    monkeypatch.setattr(visual, "review_visual", lambda *args: visual.Review(
+        relevance=5, brand=5, reference_fidelity=5, visual_integrity=5, claim_safety=5, issues=[]))
     app = FastAPI()
     app.include_router(router)
     return TestClient(app, headers={"X-Reachly-Client": "clinic-service", "Authorization": "Bearer fictional-service-secret"})

@@ -76,3 +76,13 @@ A successful local test or health response does not prove a real generation,
 login-code delivery, social publication, or metrics sync. Those need the relevant
 provider/account configuration and individual acceptance checks. Do not replay
 paid jobs or posting attempts to obtain such evidence without authorization.
+
+## Visual quality and image API (pending release, 2026-10-08)
+
+The visual-quality task branch adds structured image planning, reference images, true image
+edits, explicit shape/resolution, deterministic headline/CTA/logo layout, quality review,
+and private prompt/revision records. Personal Studio exposes the new image controls.
+`/api-access` provisions workspace-scoped generation tokens; `/api/v1/image-posts` accepts
+business/audit/website/SaaS2point0/other context and returns a caption plus image. These are
+source/test-validated changes pending deployment, not a claim of live provider acceptance.
+See `docs/IMAGE_QUALITY.md`, `docs/IMAGE_POST_API.md` and the latest session note.

@@ -71,6 +71,8 @@ from .workspaces import router as workspace_router
 app.include_router(workspace_router)
 from .x_engagement import router as x_router
 app.include_router(x_router)
+from .image_post_api import router as image_post_router
+app.include_router(image_post_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
 media_path = Path(settings.media_dir)

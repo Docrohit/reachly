@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, File, UploadFile, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlmodel import Field, SQLModel, select
 from sqlalchemy import update
@@ -138,14 +138,34 @@ def research(request: Request):
 
 
 @router.post("/studio/generate")
-def generate(request: Request, topic: str = Form(""), with_image: str = Form("off")):
+def generate(request: Request, topic: str = Form(""), with_image: str = Form("off"),
+             aspect_ratio: str = Form("1:1"), image_size: str = Form("1K"),
+             headline: str = Form(""), cta: str = Form(""), reference_role: str = Form("style"),
+             reference_images: list[UploadFile] = File(default=[])):
     user = _user(request)
     profile = _profile(user.id)
     if len(topic) > 500:
         raise HTTPException(422, "Keep the topic within 500 characters.")
+    from reachly.visual import ReferenceImage, VisualOptions, Layout
+    import base64
+    try:
+        if len(reference_images) > 4:
+            raise ValueError("Too many references")
+        references = []
+        for file in reference_images:
+            if file.filename:
+                data = file.file.read(2_000_001)
+                if len(data) > 2_000_000:
+                    raise ValueError("Reference too large")
+                references.append(ReferenceImage(role=reference_role, label=file.filename[:160], image_base64=base64.b64encode(data).decode()))
+        options = VisualOptions(aspect_ratio=aspect_ratio, image_size=image_size,
+                                layout=Layout(headline=headline, cta=cta))
+    except ValueError:
+        raise HTTPException(422, "Use up to four PNG/JPEG/WebP references under 2 MB each, a supported size and short layout text")
     agent = _active_agent(user)
     try:
-        post = agent.build_post(theme=topic.strip() or None, attach_image=with_image == "on")
+        post = agent.build_post(theme=topic.strip() or None, attach_image=with_image == "on",
+                                visual_options=options, references=references)
         if with_image == "on" and not post.media:
             raise HTTPException(502, "Image generation did not complete. Check the image provider before retrying.")
         with get_session() as session:
@@ -260,3 +280,17 @@ def save_analytics(request: Request, post_id: int, impressions: int | None = For
     finally:
         history.close()
     return RedirectResponse("/analytics", status_code=303)
+
+
+@router.get("/studio/{draft_id}/audit")
+def draft_audit(request: Request, draft_id: str):
+    from .app import _user_agent_dir
+    from fastapi.responses import JSONResponse
+    user = _user(request)
+    draft = _draft(user.id, draft_id)
+    post = GeneratedPost.model_validate_json(draft.content)
+    if not post.generation_id:
+        raise HTTPException(404, "This older draft has no generation record")
+    folder = _user_agent_dir(user.id) / "generations" / str(uuid.UUID(post.generation_id))
+    return JSONResponse({path.name: json.loads(path.read_text()) for path in folder.glob("*.json")},
+                        headers={"Cache-Control": "private, no-store"})

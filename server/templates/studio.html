@@ -17,13 +17,21 @@
 <form action="/studio/research" method="post" style="margin-top:18px"><p class="muted">Online research uses your saved business profile and Gemini key, then saves findings with source links. Provider charges may apply.</p><button class="btn" type="submit">Research this business online</button></form>
 </div>
 <div class="card"><h2>Generate a draft</h2><p class="muted">Uses your saved business, project inputs, research, and performance feedback. Generation does not publish. Provider charges may apply.</p>
-<form action="/studio/generate" method="post"><label>Topic or direction</label><input name="topic" maxlength="500" placeholder="Optional: leave blank to use your content themes"/>
+<form action="/studio/generate" method="post" enctype="multipart/form-data"><label>Topic or direction</label><input name="topic" maxlength="500" placeholder="Optional: leave blank to use your content themes"/>
+<label>Image shape</label><select name="aspect_ratio"><option>1:1</option><option>4:5</option><option>9:16</option><option>16:9</option><option>3:4</option><option>4:3</option></select>
+<label>Resolution (larger sizes may cost more)</label><select name="image_size"><option>1K</option><option>2K</option><option>4K</option></select>
+<label>Reference images (up to four, 2 MB each)</label><input type="file" name="reference_images" multiple accept="image/png,image/jpeg,image/webp"/>
+<label>Use these references as</label><select name="reference_role"><option value="style">Visual style</option><option value="product">Actual product</option><option value="premises">Actual premises</option><option value="person">Approved person likeness</option></select>
+<label>Optional headline on the image</label><input name="headline" maxlength="90"/>
+<label>Optional CTA on the image</label><input name="cta" maxlength="70"/>
+<p class="muted">Visual planning and image review are included. Images that fail review are held back. Text and your saved logo are added separately.</p>
 <label><input type="checkbox" name="with_image" value="on"/> Generate an image with the draft</label><button class="btn primary" type="submit">Generate draft</button></form></div>
 {% endif %}
 <h2>Recent drafts</h2>
 {% for item in drafts %}{% set d = item.row %}{% set p = item.post %}
 <div class="card"><span class="pill">{{ d.state.replace('_',' ') }}</span><h2>{{ p.hook }}</h2><p style="white-space:pre-wrap">{{ p.body }}</p><p>{{ p.hashtags | join(' ') }}</p><p>{{ p.link or '' }}</p>
 {% if p.media %}<img src="/studio/{{ d.id }}/media" alt="Generated draft image" style="max-width:100%;max-height:440px;border-radius:12px"/>{% endif %}
+{% if p.generation_id %}<p><a href="/studio/{{ d.id }}/audit">View prompts and image review</a></p>{% endif %}
 {% if d.state == 'draft' %}<form action="/studio/{{ d.id }}/publish" method="post" style="margin-top:16px"><label>Publish through your connected account</label><select name="platform"><option value="linkedin">LinkedIn</option><option value="twitter">X</option><option value="instagram">Instagram</option></select>
 <label><input type="checkbox" name="confirm" value="publish" required/> I reviewed this draft and want it published to the selected connected account.</label><button class="btn" type="submit">Publish this draft</button><p class="muted">Requires Live mode in Settings. Each draft has one publishing attempt; outcomes needing verification are never automatically retried.</p></form>{% else %}<p>{{ d.result or 'Publishing in progress. Check the platform before any retry.' }}</p>{% endif %}</div>
 {% else %}<p class="muted">No drafts yet. Save your inputs and generate the first one.</p>{% endfor %}

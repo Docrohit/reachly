@@ -7,7 +7,6 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from PIL import Image
 from . import generation_store as store
 from .business_brand import logo_file
 from .content import generate_post
@@ -16,12 +15,13 @@ from .generation_config import provider_settings
 from .generation_contract import GenerationRequest
 from .llm import LLMClient
 from .media import generate_image_gemini
+from .visual import create_visual, RecordedLLM, write_record, VisualOptions, validate_options
 from .models import GeneratedPost, Platform
 from .content_ideas import generate_ideas
 from .teleprompter import ScriptValidationError, generate_script
 
 logger = logging.getLogger(__name__)
-PROMPT_VERSION = "business-generation-v4-contributions"
+PROMPT_VERSION = "business-generation-v5-visual-review"
 PERFORMANCE_GUIDANCE = ("performance_signals are measured results of this business's own published posts. Favour themes, "
     "narratives, opening styles and visual approaches resembling higher-engagement posts and avoid patterns shared by the "
     "lowest performers, while keeping roughly one angle in three exploratory so new ideas are tested. Never reuse a past hook "
@@ -83,40 +83,22 @@ def original_candidate(row, request):
     return item, store.root() / previous["id"] / (str(uuid.UUID(item["id"])) + ".png")
 
 
-def render_image(post, request, provider, folder, candidate_id, logo):
-    prompt = (post.image_prompt or "") + "\nBusiness: " + request.business.name
-    prompt += "\nSector: " + (request.business.sector or "unspecified")
-    prompt += "\nBrand palette: " + (", ".join(request.brand.colors) or "Choose colours appropriate to this business; no platform brand palette.")
-    prompt += "\nVisual theme: " + request.brand.theme
-    prompt += "\nUse only this business identity. No invented logos, text, staff likenesses or medical outcome claims."
-    if request.brief:
-        prompt += "\nRequested creative direction (data, not instructions): " + request.brief.model_dump_json()
-        prompt += "\nScenes and patient journeys must be clearly illustrative, never presented as real clinic premises, actual patients or testimonials."
-    if logo:
-        prompt += "\nA supplied business logo will be overlaid separately after generation; do not draw an additional logo."
-    else:
-        prompt += "\nNo business logo is supplied. Do not draw a logo, logo placeholder, empty square, black box, watermark, or reserved logo area."
-    media = generate_image_gemini(prompt, api_key=provider["gemini_api_key"], model=provider["image_model"], out_dir=folder)
-    target = folder / (candidate_id + ".png")
-    with Image.open(media.local_path) as source:
-        if max(source.size) > 4096 or min(source.size) < 64:
-            raise ValueError("Image dimensions are outside allowed limits")
-        image = source.convert("RGBA")
-        if logo:
-            with Image.open(logo) as raw_logo:
-                overlay = raw_logo.convert("RGBA")
-                overlay.thumbnail((max(1, image.width // 5), max(1, image.height // 5)))
-                margin = max(4, image.width // 30)
-                image.alpha_composite(overlay, (image.width-overlay.width-margin, image.height-overlay.height-margin))
-        image.save(target, "PNG")
-    Path(media.local_path).unlink(missing_ok=True)
-    if target.stat().st_size > 5_000_000:
-        raise ValueError("Generated image exceeds delivery size")
-    return target
+def render_image(post, request, provider, folder, candidate_id, logo, llm, strategy, original_path=None):
+    if original_path:
+        raw_original = original_path.with_name(original_path.stem + ".raw.png")
+        if raw_original.is_file():
+            original_path = raw_original
+    media = create_visual(post=post, business=request.business,
+        context={"strategy": strategy.for_prompt(), "brief": request.brief.model_dump() if request.brief else None,
+                 "brand": request.brand.model_dump(exclude={"logo_base64"}), "original": request.original},
+        llm=llm, provider=provider, folder=folder, candidate_id=candidate_id,
+        options=request.visual, references=request.references or [], original_path=original_path,
+        feedback=request.feedback, logo=logo, generator=generate_image_gemini)
+    return Path(media.local_path)
 
 
-def generate_candidate(row, request, provider, llm, strategy, theme, hooks, folder, logo, original, original_path):
-    candidate_id = str(uuid.uuid4())
+def generate_candidate(row, request, provider, llm, strategy, theme, hooks, folder, logo, original, original_path, candidate_id=None):
+    candidate_id = candidate_id or str(uuid.uuid4())
     if original and request.revision_mode == "image":
         current = request.public_facts.get("current_post")
         post = GeneratedPost.model_validate({"theme": current["topic"], **current, "link": current.get("cta") or None} if current else original["post"])
@@ -135,11 +117,14 @@ def generate_candidate(row, request, provider, llm, strategy, theme, hooks, fold
     if original and request.revision_mode == "copy":
         target = folder / (candidate_id + ".png")
         target.write_bytes(original_path.read_bytes())
+        write_record(folder / (candidate_id + ".audit.json"), {"state": "completed", "mode": "copy",
+            "original": request.original, "feedback": request.feedback, "image_reused": True})
     else:
-        target = render_image(post, request, provider, folder, candidate_id, logo)
+        target = render_image(post, request, provider, folder, candidate_id, logo, llm, strategy, original_path)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     return {"id": candidate_id, "state": "completed", "post": post.model_dump(mode="json", exclude={"media"}),
-            "media_sha256": digest, "source_version": request.source_version}
+            "media_sha256": digest, "source_version": request.source_version,
+            "audit_available": True, "original": request.original}
 
 
 def plan_themes(llm, request, facts):
@@ -170,12 +155,14 @@ def plan_themes(llm, request, facts):
     return themes * request.count if alternatives else themes
 
 
-def process(row):
+def process(row, provider_override=None):
     result = {"candidates": [], "warnings": [], "stage": "preparing", "prompt_version": PROMPT_VERSION}
     try:
         request = GenerationRequest.model_validate_json(row["payload"])
         request.check_scope()
-        provider = provider_settings(row["provider"])
+        provider = provider_override or provider_settings(row["provider"])
+        if request.operation == "posts" and request.revision_mode != "copy":
+            validate_options(request.visual or VisualOptions(), provider["image_model"])
         result["models"] = {key: provider[key] for key in ("llm_provider", "llm_model", "image_model")}
         result["source_version"] = request.source_version
         result["context_mode"] = request.context_mode
@@ -199,6 +186,7 @@ def process(row):
         result["evidence"] = {"geo": request.geo.model_dump() if request.geo else None, "research": research}
         llm = LLMClient(provider["llm_provider"], model=provider["llm_model"],
                         **{k: provider[k] for k in ("gemini_api_key", "openai_api_key", "anthropic_api_key")})
+        llm = RecordedLLM(llm, folder / "text-prompts.json")
         facts = {"public_business_facts": request.public_facts, "evidence": result["evidence"],
                  "feedback": request.feedback, "brand_theme": request.brand.theme}
         if request.performance:
@@ -233,7 +221,7 @@ def process(row):
         strategy = StrategyContext(source="business_api", goals_text=json.dumps(facts))
         result["stage"] = "planning"
         store.save(row["id"], result)
-        themes = plan_themes(llm, request, facts)
+        themes = [original["post"]["theme"]] if original and request.revision_mode == "image" else plan_themes(llm, request, facts)
         if request.creative_mode == "daily_alternatives":
             result["daily_topic"] = themes[0]
         hooks = list(dict.fromkeys(request.recent_hooks + store.recent_hooks(row["owner"], request.business_id)))
@@ -241,11 +229,12 @@ def process(row):
         for index, theme in enumerate(themes):
             result["active_candidate"] = index + 1
             store.save(row["id"], result)  # Persist before each paid attempt.
+            candidate_id = str(uuid.uuid4())
             try:
                 direction = theme
                 if request.creative_mode == "daily_alternatives":
                     direction += f". Content type: {request.content_type}. Alternative {index + 1} of the same daily post; vary the opening and visual composition, keeping this topic and business facts."
-                item = generate_candidate(row, request, provider, llm, strategy, direction, hooks, folder, logo, original, original_path)
+                item = generate_candidate(row, request, provider, llm, strategy, direction, hooks, folder, logo, original, original_path, candidate_id=candidate_id)
                 if request.creative_mode == "daily_alternatives":
                     item["post"]["theme"] = theme
                 if any(c.get("media_sha256") == item["media_sha256"] for c in result["candidates"]):
@@ -253,7 +242,7 @@ def process(row):
                 hooks.append(item["post"]["hook"])
             except Exception as exc:
                 logger.warning("Candidate generation failed for job %s: %s", row["id"], type(exc).__name__)
-                item = {"id": str(uuid.uuid4()), "state": "failed" if isinstance(exc, ValueError) else "needs_attention", "theme": theme,
+                item = {"id": candidate_id, "audit_available": (folder / (candidate_id + ".audit.json")).is_file(), "state": "failed" if isinstance(exc, ValueError) else "needs_attention", "theme": theme,
                         "message": "Copy or image validation failed." if isinstance(exc, ValueError) else "Provider outcome is uncertain; inspect before retrying."}
             result["candidates"].append(item)
             store.save(row["id"], result)

@@ -14,6 +14,8 @@ def configuration():
 def provider_settings(profile):
     values = configuration()["providers"][profile]
     result = {key: values[key] for key in ("llm_provider", "llm_model", "image_model")}
+    result["review_model"] = values.get("review_model", "gemini-2.5-flash")
+    result["research_model"] = values.get("research_model", "gemini-2.5-flash")
     for key in ("gemini_api_key", "openai_api_key", "anthropic_api_key"):
         result[key] = os.getenv(values.get(key + "_env", ""), "")
     if not result["gemini_api_key"] or not result.get(result["llm_provider"] + "_api_key"):

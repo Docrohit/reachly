@@ -91,6 +91,7 @@ class GeneratedPost(BaseModel):
     hashtags: list[str] = Field(default_factory=list)
     link: Optional[str] = None
     image_prompt: Optional[str] = None
+    generation_id: Optional[str] = None
     media: Optional[GeneratedMedia] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
