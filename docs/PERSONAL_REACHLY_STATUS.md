@@ -40,10 +40,30 @@ The task branch is `codex/rohit-personal-reachly-sync-2026-10-07`. GitHub CI tes
 only; pushing main does not deploy or provision external accounts. Consult the
 latest session note for the deployed revision and acceptance results.
 
-Created business workspaces: Council of AI (2) and Council Network (3), with
-facts taken from their local README files. The new personal site is deployed and its authenticated workspace pages have been
-verified. The workspaces require the owner's AI provider
-and X/Instagram credentials before real generation or publication.
+The actual owner login was verified in the user's browser on 2026-10-08 as
+account 4. Its business workspaces are Council of AI (5) and Council Network (6),
+with facts taken from their local README files. Initial workspaces 2 and 3 had
+been seeded under a pre-existing admin account and were not visible to this login;
+those records were preserved without moving credentials or account data.
+The new personal site is deployed and its authenticated workspace pages have been
+verified. Both Council workspaces now share the verified X account
+`@agents_council` through encrypted OAuth 1.0a credentials, with live mode enabled
+and schedules off. AI provider keys and Instagram credentials are still needed.
+
+## X posts and conversations
+
+Open `/x` after choosing a business. Write a text post, or discover up to ten
+recent posts using one to five hashtags. Edit a reply yourself, or request an AI
+draft after adding that business's AI provider key. Each send requires an explicit
+review checkbox. Search and drafting never send replies or likes.
+
+Reviewed X sends from this page and Studio share a durable account-level ledger:
+duplicate text posts and repeat replies to a source post are blocked across
+businesses, including uncertain outcomes. The limit is 20 attempts per UTC day,
+including at most five replies. Keep schedules off for this reviewed workflow;
+legacy scheduler/CLI sends do not use this ledger. API credits can be required
+for identity checks, search and publishing. Public posting acceptance remains
+unverified until a real reviewed post is sent and its permalink checked.
 
 ## Compatibility and remaining acceptance
 
