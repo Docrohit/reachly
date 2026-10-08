@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}X · Reachly{% endblock %}
+{% block content %}
+<h1>X posts and conversations</h1>
+<p><strong>{{ profile.name }}</strong> · {% if account %}Connected account: <a href="https://x.com/{{ account }}" target="_blank" rel="noopener">@{{ account }}</a>{% else %}Add X API credentials in <a href="/dashboard">Settings</a>.{% endif %}</p>
+{% if notice %}<p class="ok" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
+<div class="card"><h2>One account, separate businesses</h2><p>Both businesses can use the same X account. Duplicate posts and repeat replies to the same source post are blocked across workspaces. Every send is explicit; hashtag discovery and AI suggestions never send anything.</p>
+<p class="muted">Reviewed sends from this page and Studio share a limit of 20 posts/replies per UTC day, including at most 5 replies. Keep schedules off when using this reviewed workflow. Provider credits may be needed for verification, search, publishing and AI drafting. Automatic likes, follows and unsolicited auto-replies are not enabled.</p>
+<form action="/x/verify" method="post"><button class="btn" type="submit">Verify X connection</button></form></div>
+<div class="card"><h2>Write a post</h2><p>Use this for a text post, or use <a href="/studio">Studio</a> to generate a business draft with optional imagery.</p>
+<form action="/x/send" method="post"><label>Post text</label><textarea name="text" maxlength="280" required placeholder="Write a useful update about this business…"></textarea>
+<label><input type="checkbox" name="confirm" value="send" required/> I reviewed this post and want to send it from @{{ account or 'the connected X account' }}.</label><button class="btn primary" type="submit">Send reviewed post</button></form></div>
+<div class="card"><h2>Discover hashtag conversations</h2><form action="/x/discover" method="post"><label>One to five hashtags</label><input name="hashtags" maxlength="260" value="{{ tags }}" placeholder="#AIAgents #MultiAgentAI" required/>
+<p class="muted">Fetch up to 10 recent posts per search. X API charges may apply. Discovery excludes this account's own posts, reposts and replies.</p><button class="btn" type="submit">Find conversations</button></form></div>
+{% for item in opportunities %}<div class="card"><h2><a href="https://x.com/i/web/status/{{ item.tweet_id }}" target="_blank" rel="noopener">{{ '@' + item.author if item.author else 'View source post' }}</a></h2><p style="white-space:pre-wrap">{{ item.text }}</p>
+<form action="/x/{{ item.id }}/suggest" method="post"><button class="btn" type="submit">Draft a reply with AI</button><span class="muted"> Uses this business's AI key; provider charges may apply.</span></form>
+<form action="/x/send" method="post"><input type="hidden" name="opportunity_id" value="{{ item.id }}"/><label>Your reviewed reply</label><textarea name="text" maxlength="280" required placeholder="Add a specific, useful response…">{{ item.suggested_reply }}</textarea>
+<label><input type="checkbox" name="confirm" value="send" required/> I reviewed the source and this reply and want to send it from @{{ account }}.</label><button class="btn primary" type="submit">Send reviewed reply</button></form></div>{% endfor %}
+<h2>Shared account receipts</h2>{% for action in actions %}<div class="card"><span class="pill">{{ action.kind }} · {{ action.state.replace('_', ' ') }}</span><p>{{ action.text }}</p>{% if action.state == 'published' %}<a href="{{ action.detail }}" target="_blank" rel="noopener">View on X</a>{% else %}<p>{{ action.detail or 'Attempt in progress. Do not retry.' }}</p>{% endif %}</div>{% else %}<p class="muted">No reviewed X actions recorded yet.</p>{% endfor %}
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('form').forEach(f=>f.addEventListener('submit',()=>{const b=f.querySelector('button');if(b){b.disabled=true;b.textContent='Working…';}}));</script>{% endblock %}

@@ -13,7 +13,7 @@ from reachly.storage import History
 
 @pytest.fixture
 def personal(tmp_path, monkeypatch, request):
-    from server import app as web, db, orchestrator, studio
+    from server import app as web, db, orchestrator, studio, crypto
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False})
     monkeypatch.setattr(db, "engine", engine)
     column = db.User.__table__.c.telegram_chat_id
@@ -29,6 +29,7 @@ def personal(tmp_path, monkeypatch, request):
     monkeypatch.setattr(web.settings, "legacy_auth_enabled", False)
     monkeypatch.setattr(web.settings, "telegram_login_enabled", True)
     monkeypatch.setattr(orchestrator, "get_settings", lambda: web.settings)
+    monkeypatch.setattr(crypto, "get_settings", lambda: web.settings)
     from server.crypto import encrypt_dict
     with db.get_session() as session:
         user = db.User(telegram_chat_id="42", is_active=True, dry_run=True)

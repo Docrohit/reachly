@@ -69,6 +69,8 @@ from .studio import router as studio_router
 app.include_router(studio_router)
 from .workspaces import router as workspace_router
 app.include_router(workspace_router)
+from .x_engagement import router as x_router
+app.include_router(x_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
 media_path = Path(settings.media_dir)

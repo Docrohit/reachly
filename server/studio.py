@@ -208,7 +208,14 @@ def publish(request: Request, draft_id: str, platform: str = Form(...), confirm:
             if result.rowcount != 1:
                 raise HTTPException(409, "This draft already has a publishing attempt. Check its result on the platform.")
         try:
-            results = agent._publish(post, platforms=[target])
+            if target == Platform.twitter and creds.mode.value == "api":
+                from .x_engagement import guarded_send
+                result = guarded_send(user, post.for_platform(target),
+                    expected_credentials=creds,
+                    publish=lambda: agent._publish(post, platforms=[target])[target])
+                results = {target: result}
+            else:
+                results = agent._publish(post, platforms=[target])
             _record_results(user.id, results)
             outcome = results.get(target)
             # Browser providers may lack a permalink; surface that separately.

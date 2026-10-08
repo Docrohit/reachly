@@ -16,7 +16,7 @@ import os
 import secrets
 import time
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit, parse_qsl
 
 import requests
 
@@ -42,10 +42,69 @@ class TwitterApiPoster(Poster):
         self.access_token = creds.extra.get("access_token") or ""
         self.access_token_secret = creds.extra.get("access_token_secret") or ""
 
-    def _headers(self, method: str = "POST", url: str = TWEETS) -> dict:
+    def _headers(self, method: str = "POST", url: str = TWEETS, params: dict | None = None) -> dict:
         if self._has_oauth1():
-            return {"Authorization": self._oauth1_header(method, url)}
+            return {"Authorization": self._oauth1_header(method, url, params)}
         return {"Authorization": f"Bearer {self.token}"}
+
+    def request_json(self, method: str, path: str, *, params=None, payload=None) -> dict:
+        """Bounded X API calls; never expose provider bodies or credential headers."""
+        url = API + path
+        try:
+            response = requests.request(method, url, params=params, json=payload,
+                                        headers=self._headers(method, url, params), timeout=25)
+        except requests.RequestException:
+            raise ValueError("X did not confirm the request. Check X before retrying a post or reply.") from None
+        messages = {401: "Reconnect your X credentials.", 402: "Add X API credits in the X Developer Console.",
+                    403: "X denied this operation. Check app permissions and account access.",
+                    429: "X rate limit reached. Wait before trying again."}
+        if not response.ok:
+            raise ValueError(messages.get(response.status_code, f"X returned HTTP {response.status_code}. Check X before retrying."))
+        try:
+            return response.json()
+        except ValueError:
+            raise ValueError("X returned an unreadable response. Check X before retrying.") from None
+
+    def identity(self) -> dict:
+        data = self.request_json("GET", "/users/me").get("data", {})
+        if not str(data.get("id", "")).isdigit() or not data.get("username"):
+            raise ValueError("X did not return an account identity.")
+        return data
+
+    def search_hashtags(self, tags: list[str], username: str) -> list[dict]:
+        import re
+        if not tags or len(tags) > 5 or any(not re.fullmatch(r"#[A-Za-z0-9_]{1,50}", t) for t in tags):
+            raise ValueError("Use one to five hashtags containing letters, numbers or underscores.")
+        if not re.fullmatch(r"[A-Za-z0-9_]{1,15}", username):
+            raise ValueError("Verify the connected X account first.")
+        query = "(" + " OR ".join(tags) + f") -is:retweet -is:reply -from:{username}"
+        result = self.request_json("GET", "/tweets/search/recent", params={
+            "query": query, "max_results": 10, "expansions": "author_id",
+            "tweet.fields": "author_id,created_at", "user.fields": "username",
+        })
+        authors = {a["id"]: a.get("username", "") for a in result.get("includes", {}).get("users", [])}
+        return [{"id": p["id"], "text": p.get("text", "")[:5000],
+                 "author": authors.get(p.get("author_id"), ""), "query": query}
+                for p in result.get("data", [])[:10] if str(p.get("id", "")).isdigit()]
+
+    @staticmethod
+    def validate_text(text: str) -> None:
+        # Conservative limit also bounds double-weight Unicode characters.
+        weight = sum(1 if ord(c) <= 0x10ff or 0x2000 <= ord(c) <= 0x200d or 0x2010 <= ord(c) <= 0x201f or 0x2032 <= ord(c) <= 0x2037 else 2 for c in text)
+        if not text.strip() or weight > 280:
+            raise ValueError("Keep the post within 280 weighted characters (some symbols count twice).")
+
+    def send_text(self, text: str, reply_to: str = "") -> PostResult:
+        self.validate_text(text)
+        payload = {"text": text.strip()}
+        if reply_to:
+            if not reply_to.isdigit():
+                raise ValueError("Invalid X reply target.")
+            payload["reply"] = {"in_reply_to_tweet_id": reply_to}
+        data = self.request_json("POST", "/tweets", payload=payload).get("data", {})
+        if not str(data.get("id", "")).isdigit():
+            raise ValueError("X did not return a post ID. Check the account before retrying.")
+        return self._ok(f"https://x.com/i/web/status/{data['id']}")
 
     def post(self, post: GeneratedPost) -> PostResult:
         if not self.token and not self._has_oauth1():
@@ -123,7 +182,7 @@ class TwitterApiPoster(Poster):
             status = requests.get(
                 MEDIA_UPLOAD,
                 params={"command": "STATUS", "media_id": media_id},
-                headers=self._headers("GET", MEDIA_UPLOAD),
+                headers=self._headers("GET", MEDIA_UPLOAD, {"command": "STATUS", "media_id": media_id}),
                 timeout=30,
             )
             status.raise_for_status()
@@ -145,7 +204,7 @@ class TwitterApiPoster(Poster):
             ]
         )
 
-    def _oauth1_header(self, method: str, url: str) -> str:
+    def _oauth1_header(self, method: str, url: str, query: dict | None = None) -> str:
         params = {
             "oauth_consumer_key": self.consumer_key,
             "oauth_nonce": secrets.token_urlsafe(24),
@@ -154,12 +213,16 @@ class TwitterApiPoster(Poster):
             "oauth_token": self.access_token,
             "oauth_version": "1.0",
         }
+        parts = urlsplit(url)
+        base_url = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        signature_params = list(params.items()) + parse_qsl(parts.query, keep_blank_values=True) + list((query or {}).items())
+        normalized = sorted((_percent_encode(k), _percent_encode(v)) for k, v in signature_params)
         signature_base = "&".join(
             [
                 method.upper(),
-                _percent_encode(url),
+                _percent_encode(base_url),
                 _percent_encode(
-                    "&".join(f"{_percent_encode(k)}={_percent_encode(v)}" for k, v in sorted(params.items()))
+                    "&".join(f"{k}={v}" for k, v in normalized)
                 ),
             ]
         )
