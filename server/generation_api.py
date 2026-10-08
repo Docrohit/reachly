@@ -5,7 +5,7 @@ import os
 import re
 import uuid
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 from reachly import generation_store as store
 from reachly.generation_config import configuration
@@ -75,7 +75,7 @@ async def create(request: Request):
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
-        if len(body) > 4_000_000:
+        if len(body) > 16_000_000:
             raise HTTPException(413, "Generation request too large")
     try:
         payload = GenerationRequest.model_validate_json(body)
@@ -127,3 +127,13 @@ def asset(request: Request, job_id: str, candidate_id: str):
     if not path.is_file():
         raise HTTPException(404, "Image is not available")
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/{job_id}/audit")
+def audit(request: Request, job_id: str):
+    row = owned_job(request, job_id)
+    folder = store.root() / row["id"]
+    records = {p.stem: json.loads(p.read_text()) for p in folder.glob("*.audit.json")}
+    trace = folder / "text-prompts.json"
+    return JSONResponse({"job_id": row["id"], "state": row["state"], "records": records,
+            "text_prompts": json.loads(trace.read_text()) if trace.is_file() else {"calls": []}}, headers={"Cache-Control": "private, no-store"})

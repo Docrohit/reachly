@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
 from .business_brand import palette
 from .models import BusinessProfile
+from .visual import VisualOptions, ReferenceImage
 
 
 class Brand(BaseModel):
@@ -87,7 +88,7 @@ class Contribution(BaseModel):
 
 class GenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: Literal[1, 2, 3] = 1
+    schema_version: Literal[1, 2, 3, 4] = 1
     operation: Literal["posts", "ideas", "teleprompter_script"] = "posts"
     script_options: ScriptOptions | None = None
     brief: CreativeBrief | None = None
@@ -111,10 +112,15 @@ class GenerationRequest(BaseModel):
     feedback: str = Field(default="", max_length=2000)
     revision_mode: Literal["both", "copy", "image"] = "both"
     original: dict | None = None
+    visual: VisualOptions | None = None
+    references: list[ReferenceImage] | None = Field(default=None, max_length=4)
 
     @model_serializer(mode="wrap")
     def serialize_version(self, handler):
         data = handler(self)
+        for key in ("visual", "references"):
+            if getattr(self, key) is None:
+                data.pop(key, None)
         if self.script_options is None:
             data.pop("script_options", None)
         # Absent signals keep earlier request digests stable for in-flight replays.
@@ -128,6 +134,8 @@ class GenerationRequest(BaseModel):
         return data
 
     def check_scope(self):
+        if (self.visual is not None or self.references is not None) and (self.schema_version != 4 or self.operation != "posts"):
+            raise ValueError("Visual options and references require v4 posts")
         if self.operation == "teleprompter_script":
             if (self.schema_version != 3 or self.script_options is None or self.count != 1
                     or self.original or self.brief or self.creative_mode != "distinct_posts"):

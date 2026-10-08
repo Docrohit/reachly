@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Image API · Reachly{% endblock %}
+{% block content %}
+<h1>Image-post API</h1>
+<p>Selected business: <strong>{{ profile.name if profile else 'Save a business first' }}</strong></p>
+<p>Send business, audit, website, SaaS2point0 and other context from curl or Postman. Receive a caption and image. Generation never publishes.</p>
+<p>Uses this workspace’s saved AI keys. A post includes visual planning, image generation and quality review; provider charges apply. Ten jobs per hour per workspace.</p>
+{% if token %}<div class="card"><h2>Copy your token now</h2><p>This is its only display. Keep it private.</p><code style="word-break:break-all">{{ token }}</code></div>{% endif %}
+<p>{{ 'An API token is active.' if key else 'No API token is active.' }}</p>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"/><button class="btn primary" name="action" value="rotate">{{ 'Replace token' if key else 'Create token' }}</button> <button class="btn" name="action" value="revoke">Revoke token</button></form>
+<p>Replacing or revoking invalidates the previous token. Tokens belong to this workspace. A business identity change requires a new token.</p>
+<h2>Try it</h2>
+<pre style="overflow:auto">curl --max-time 100 -X POST '{{ request.base_url }}api/v1/image-posts?wait_seconds=90' \
+  -H 'Authorization: Bearer YOUR_TOKEN' \
+  -H 'Idempotency-Key: A_NEW_UUID' \
+  -H 'Content-Type: application/json' \
+  --data '{"topic":"Explain our main service","inputs":{"audit":"Your audit findings","website":"Verified website facts","saas2point0":"Your positioning","other":"Audience and objective"},"visual":{"aspect_ratio":"4:5","image_size":"1K"}}'</pre>
+<p>A completed response contains candidates[0].post and image_base64. If HTTP 202 returns, GET the status_url with the same bearer token. Reuse the same Idempotency-Key and payload after a connection timeout. A failed or needs_attention result requires inspection, never an automatic retry.</p>
+<p>Read <a href="https://github.com/Docrohit/reachly/blob/main/docs/IMAGE_POST_API.md">the API guide</a> for references, edits and Postman examples.</p>
+{% endblock %}

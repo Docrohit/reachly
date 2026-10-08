@@ -268,12 +268,22 @@ class Agent:
         theme: Optional[str] = None,
         *,
         attach_image: Optional[bool] = None,
+        visual_options=None,
+        references=(),
     ) -> GeneratedPost:
         self._refresh_strategy_context()
         theme = theme or self._select_theme()
         logger.info("Generating post for theme: %s", theme)
+        import uuid
+        from .visual import RecordedLLM, create_visual, validate_options, VisualOptions
+        should_attach_image = self.settings.attach_image if attach_image is None else attach_image
+        if should_attach_image and self.settings.image_provider == "gemini":
+            validate_options(visual_options or VisualOptions(), self.settings.gemini_image_model)
+        generation_id = str(uuid.uuid4())
+        folder = self.settings.data_dir / "generations" / generation_id
+        llm = RecordedLLM(self.llm, folder / "text-prompts.json")
         post = generate_post(
-            self.llm,
+            llm,
             self.business,
             theme=theme,
             recent_hooks=self.history.recent_hooks(),
@@ -281,12 +291,17 @@ class Agent:
             newness_context=self.history.newness_summary(limit_per_platform=3),
             strategy=self._strategy,
         )
-        should_attach_image = self.settings.attach_image if attach_image is None else attach_image
-        if should_attach_image and post.image_prompt:
-            try:
-                post.media = self._generate_media(post.image_prompt)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Media generation failed (%s); posting text-only.", e)
+        post.generation_id = generation_id
+        if should_attach_image and self.settings.image_provider == "gemini":
+            provider = {"gemini_api_key": self.settings.gemini_api_key,
+                        "image_model": self.settings.gemini_image_model}
+            media = create_visual(post=post, business=self.business,
+                context={"strategy": self._strategy.for_prompt()}, llm=llm, provider=provider,
+                folder=folder, candidate_id=generation_id, options=visual_options,
+                references=references, logo=self.settings.brand_logo_path)
+            post.media = self._make_public_media(media)
+        elif should_attach_image and post.image_prompt:
+            post.media = self._generate_media(post.image_prompt)
         return post
 
     def _select_theme(self) -> str:

@@ -1,0 +1,87 @@
+{
+  "info": {
+    "name": "Personal Reachly Image Posts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://reachly.nftforger.com"
+    },
+    {
+      "key": "request_id",
+      "value": ""
+    },
+    {
+      "key": "job_id",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{reachly_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Generate image post",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.collectionVariables.get('request_id')) pm.collectionVariables.set('request_id', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json(); if (body.job_id) pm.collectionVariables.set('job_id', body.job_id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_id}}"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/image-posts?wait_seconds=90",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"topic\": \"Explain our main service\",\n  \"inputs\": {\n    \"audit\": \"Your audit findings\",\n    \"website\": \"Verified website facts\",\n    \"saas2point0\": \"Your positioning\",\n    \"other\": \"Audience and objective\"\n  },\n  \"visual\": {\n    \"aspect_ratio\": \"4:5\",\n    \"image_size\": \"1K\"\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "Get post and image",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/v1/image-posts/{{job_id}}"
+      }
+    },
+    {
+      "name": "Get prompts and review",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/v1/image-posts/{{job_id}}/audit"
+      }
+    }
+  ]
+}
