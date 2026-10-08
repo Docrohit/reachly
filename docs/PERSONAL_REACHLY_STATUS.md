@@ -40,8 +40,12 @@ The task branch is `codex/rohit-personal-reachly-sync-2026-10-07`. GitHub CI tes
 only; pushing main does not deploy or provision external accounts. Consult the
 latest session note for the deployed revision and acceptance results.
 
-Created business workspaces: Council of AI (2) and Council Network (3), with
-facts taken from their local README files. The new personal site is deployed and its authenticated workspace pages have been
+The actual owner login was verified in the user's browser on 2026-10-08 as
+account 4. Its business workspaces are Council of AI (5) and Council Network (6),
+with facts taken from their local README files. Initial workspaces 2 and 3 had
+been seeded under a pre-existing admin account and were not visible to this login;
+those records were preserved without moving credentials or account data.
+The new personal site is deployed and its authenticated workspace pages have been
 verified. The workspaces require the owner's AI provider
 and X/Instagram credentials before real generation or publication.
 
