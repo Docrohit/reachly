@@ -35,8 +35,10 @@ def get_poster(creds: PlatformCredentials, *, data_dir, public_media_base_url=No
         return InstagramBrowserPoster(creds, data_dir=data_dir)
 
     if creds.platform == Platform.facebook:
-        if creds.mode != PlatformMode.browser:
-            raise ValueError("Facebook currently requires browser mode.")
+        if creds.mode == PlatformMode.api:
+            from .facebook import FacebookApiPoster
+
+            return FacebookApiPoster(creds)
         from .facebook import FacebookBrowserPoster
         return FacebookBrowserPoster(creds, data_dir=data_dir)
 

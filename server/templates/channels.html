@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Channels · Reachly{% endblock %}
+{% block content %}
+<style>
+  .ch-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}
+  .ch-head h1{font-size:32px;margin:0}
+  .notice{padding:12px 16px;border-radius:10px;margin:12px 0;font-weight:600}
+  .notice.ok{background:#ecfdf3;color:var(--ok)} .notice.err{background:#fef3f2;color:var(--err)}
+  .project{padding:0;overflow:hidden}
+  .project-top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+  .project-top h2{margin:0}
+  .project-body{padding:18px 22px;display:grid;gap:18px}
+  @media(min-width:900px){.project-body{grid-template-columns:1.1fr .9fr}}
+  .tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .tile{border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--panel2)}
+  .tile .badge{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px}
+  .b-facebook{background:#1877f2} .b-instagram{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af)} .b-twitter{background:#0f1419}
+  .tile .acct{font-weight:700;word-break:break-word} .tile form{margin:0}
+  .small{font-size:13px} .btn.sm{padding:6px 12px;font-size:13px}
+  .switch-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .auto{border:1px solid var(--border);border-radius:12px;padding:14px;background:linear-gradient(180deg,#f4f5ff,#fff)}
+  .auto h3,.drafts h3{margin:0 0 8px;font-size:16px}
+  .checks{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0}
+  .checks label{display:flex;gap:6px;align-items:center;margin:0;color:var(--text);font-size:14px}
+  .checks input{width:auto}
+  .status{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(151,163,182,.15);color:var(--muted)}
+  .status.published{background:#ecfdf3;color:var(--ok)} .status.failed{background:#fef3f2;color:var(--err)}
+  .status.running,.status.sending{background:#eef0ff;color:var(--brand)} .status.check_platform{background:#fffaeb;color:#b54708}
+  .draft{display:grid;grid-template-columns:96px 1fr;gap:12px;border-top:1px solid var(--border);padding-top:12px;margin-top:12px}
+  .draft img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:var(--panel2)}
+  .draft .noimg{width:96px;height:96px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;color:var(--muted);font-size:12px}
+  .draft p{margin:2px 0}
+  .receipts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .run{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .run input{flex:1;min-width:180px}
+  details summary{cursor:pointer;font-weight:700}
+</style>
+
+<div class="ch-head">
+  <div><h1>Channels</h1><p class="muted" style="margin:0">Connect each project to its Facebook Page, Instagram and X accounts, publish drafts, and let autopilot post when 24 hours pass without a post.</p></div>
+  <a class="btn" href="/studio">Open Studio</a>
+</div>
+{% if notice %}<div class="notice ok">{{ notice }}</div>{% endif %}
+{% if error %}<div class="notice err">{{ error }}</div>{% endif %}
+{% if not providers.meta or not providers.x %}
+<div class="notice err small">Not configured on this server yet: {% if not providers.meta %}Facebook &amp; Instagram{% endif %}{% if not providers.meta and not providers.x %} and {% endif %}{% if not providers.x %}X{% endif %}. Add the personal app keys to the server environment.</div>
+{% endif %}
+
+{% for p in projects %}
+<div class="card project" id="p{{ p.id }}">
+  <div class="project-top">
+    <div><h2>{{ p.name }}</h2><span class="muted small">{{ p.website or 'No website saved' }}</span></div>
+    <form method="post" action="/channels/{{ p.id }}/live" class="switch-row">
+      <span class="status {{ 'published' if p.live else '' }}">{{ 'Live publishing on' if p.live else 'Live publishing off' }}</span>
+      <input type="hidden" name="live" value="{{ 'off' if p.live else 'on' }}"/>
+      <button class="btn sm" type="submit">{{ 'Turn off' if p.live else 'Turn on' }}</button>
+    </form>
+  </div>
+  <div class="project-body">
+    <div>
+      <div class="tiles">
+        {% for key, label in channels.items() %}{% set c = p.connections.get(key) %}
+        <div class="tile">
+          <div class="badge b-{{ key }}">{{ {'facebook':'f','instagram':'◎','twitter':'𝕏'}[key] }}</div>
+          <div class="small muted">{{ label }}</div>
+          {% if c %}
+            <div class="acct">{{ c.account }}</div>
+            {% if c.status == 'reconnect' %}<span class="status failed">Reconnect needed</span>{% elif c.via != 'oauth' %}<span class="status">Saved keys</span>{% else %}<span class="status published">Connected</span>{% endif %}
+            <div class="switch-row">
+              <a class="btn sm" href="/channels/{{ p.id }}/connect/{{ 'x' if key == 'twitter' else 'meta' }}">Reconnect</a>
+              <form method="post" action="/channels/{{ p.id }}/{{ key }}/disconnect"><button class="btn sm ghost" type="submit">Disconnect</button></form>
+            </div>
+          {% elif key == 'instagram' %}
+            <div class="small muted">Connects with the Facebook Page when an Instagram professional account is linked to it.</div>
+            <a class="btn sm" href="/channels/{{ p.id }}/connect/meta">Connect via Facebook</a>
+          {% else %}
+            <div class="small muted">Not connected</div>
+            <a class="btn sm primary" href="/channels/{{ p.id }}/connect/{{ 'x' if key == 'twitter' else 'meta' }}">Connect {{ 'X' if key == 'twitter' else 'Facebook' }}</a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="drafts" style="margin-top:16px">
+        <h3>Drafts <span class="muted small">· {{ p.queue }} waiting for autopilot</span></h3>
+        {% for item in p.drafts %}{% set d = item.row %}{% set post = item.post %}
+        <div class="draft">
+          {% if post.media %}<img src="/channels/{{ p.id }}/drafts/{{ d.id }}/media" alt="Draft image" loading="lazy"/>{% else %}<div class="noimg">Text only</div>{% endif %}
+          <div>
+            <span class="status {{ d.state }}">{{ d.state.replace('_',' ') }}</span>
+            <p><strong>{{ post.hook }}</strong></p>
+            <p class="muted small">{{ post.body[:220] }}{% if post.body|length > 220 %}…{% endif %}</p>
+            {% if item.pubs %}<div class="receipts">{% for pub in item.pubs %}
+              {% if pub.permalink %}<a class="status published" href="{{ pub.permalink }}" target="_blank" rel="noopener">View on {{ channels[pub.platform] }}</a>
+              {% else %}<span class="status {{ pub.state }}" title="{{ pub.detail }}">{{ channels[pub.platform] }}: {{ pub.state.replace('_',' ') }}</span>{% endif %}
+            {% endfor %}</div>
+            {% for pub in item.pubs if pub.detail and pub.state != 'published' %}<p class="small muted">{{ channels[pub.platform] }}: {{ pub.detail }}</p>{% endfor %}{% endif %}
+            {% set done = item.pubs | selectattr('state','ne','failed') | map(attribute='platform') | list %}
+            {% set open = p.connections.keys() | reject('in', done) | list %}
+            {% if d.state in ('draft','published','failed','check_platform') and open and (d.state == 'draft' or item.pubs) %}
+            <form method="post" action="/channels/{{ p.id }}/drafts/{{ d.id }}/publish">
+              <div class="checks">{% for key in open %}<label><input type="checkbox" name="platforms" value="{{ key }}" checked/> {{ channels[key] }}</label>{% endfor %}</div>
+              <div class="switch-row">
+                <button class="btn sm primary" type="submit" {% if not p.live %}disabled title="Turn on Live publishing first"{% endif %}>Publish</button>
+                {% if d.state == 'draft' %}<button class="btn sm ghost" type="submit" formaction="/channels/{{ p.id }}/drafts/{{ d.id }}/discard">Discard</button>{% endif %}
+              </div>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+        {% else %}<p class="muted small">No drafts yet. Generate one below or in Studio.</p>{% endfor %}
+      </div>
+    </div>
+
+    <div class="auto">
+      <h3>Autopilot</h3>
+      <p class="small muted" style="margin-top:0">When 24 hours pass without a post, autopilot publishes the oldest waiting draft. If none is waiting, it generates a new image post and publishes it.</p>
+      <form method="post" action="/channels/{{ p.id }}/autopilot">
+        <div class="checks">
+          <label><input type="checkbox" name="enabled" value="on" {{ 'checked' if p.autopilot.enabled }}/> <strong>Autopilot on</strong></label>
+        </div>
+        <div class="small muted">Publish to</div>
+        <div class="checks">{% for key, label in channels.items() %}
+          <label><input type="checkbox" name="platforms" value="{{ key }}" {{ 'checked' if key in p.autopilot_channels }} {{ '' if key in p.connections else 'disabled' }}/> {{ label }}</label>
+        {% endfor %}</div>
+        <button class="btn sm" type="submit">Save autopilot</button>
+      </form>
+      <p class="small" style="margin-bottom:4px"><span class="status {{ p.autopilot.status }}">{{ p.autopilot.status }}</span> {{ p.autopilot.detail }}</p>
+      <p class="small muted" style="margin:0">Last post: {{ p.last_published.strftime('%d %b %H:%M UTC') if p.last_published else 'none yet' }}{% if p.next_due %} · next due {{ p.next_due.strftime('%d %b %H:%M UTC') }}{% endif %}</p>
+      {% if p.autopilot.enabled and p.due_note %}<p class="small muted" style="margin:4px 0 0">{{ p.due_note }}</p>{% endif %}
+
+      <form method="post" action="/channels/{{ p.id }}/run">
+        <div class="run"><input name="topic" maxlength="500" placeholder="Optional topic for a new post"/></div>
+        <div class="run">
+          <button class="btn sm primary" type="submit" name="mode" value="publish" {% if not p.live %}disabled title="Turn on Live publishing first"{% endif %}>Publish next post now</button>
+          <button class="btn sm" type="submit" name="mode" value="generate">Generate draft</button>
+        </div>
+        <p class="small muted">"Publish next post now" uses the oldest waiting draft, or generates one, and publishes to the autopilot channels. A topic always generates a new post. Provider and X charges may apply.</p>
+      </form>
+      {% if not p.has_profile %}<p class="small err">Add this project's business profile and AI provider key in <a href="/dashboard">Settings</a> before generating.</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="card">
+  <details>
+    <summary>Add a project</summary>
+    <form method="post" action="/channels/projects">
+      <div class="row">
+        <div><label>Name</label><input name="name" required maxlength="160" placeholder="TravelSolo"/></div>
+        <div><label>Website</label><input name="website" placeholder="https://"/></div>
+      </div>
+      <label>What it is (used to ground posts)</label><textarea name="about" maxlength="5000" rows="4"></textarea>
+      <label>Copy AI provider keys from</label>
+      <select name="copy_keys_from"><option value="0">Don't copy (add keys in Settings)</option>{% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
+      <button class="btn primary" type="submit" style="margin-top:12px">Create project</button>
+    </form>
+  </details>
+</div>
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('form').forEach(f=>f.addEventListener('submit',e=>{const b=e.submitter;if(b){setTimeout(()=>{b.disabled=true;b.textContent='Working…';},0);}}));</script>{% endblock %}
