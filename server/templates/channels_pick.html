@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Choose a Page · Reachly{% endblock %}
+{% block content %}
+<h1 style="font-size:32px">Choose the Facebook Page for {{ project }}</h1>
+<p class="muted">You shared several Pages. Reachly posts to the one you choose. Its linked Instagram professional account connects too.</p>
+<div class="card">
+  <form method="post" action="/channels/{{ workspace_id }}/meta/pick">
+    <input type="hidden" name="pick" value="{{ pick }}"/>
+    {% for page in pages %}
+    <label style="display:flex;gap:10px;align-items:center;color:var(--text);font-size:15px;margin:10px 0">
+      <input type="radio" name="page_id" value="{{ page.id }}" style="width:auto" {{ 'checked' if loop.first }}/>
+      <span><strong>{{ page.name }}</strong>{% if page.instagram %} · Instagram @{{ page.instagram }}{% else %} <span class="muted">· no Instagram linked</span>{% endif %}</span>
+    </label>
+    {% endfor %}
+    <button class="btn primary" type="submit">Connect this Page</button>
+    <a class="btn ghost" href="/channels">Cancel</a>
+  </form>
+</div>
+{% endblock %}

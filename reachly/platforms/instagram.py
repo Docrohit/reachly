@@ -24,7 +24,7 @@ from .browser import persistent_page, save_debug_artifact
 
 logger = logging.getLogger("reachly.instagram")
 
-GRAPH = "https://graph.facebook.com/v21.0"
+GRAPH = "https://graph.facebook.com/v25.0"
 
 
 class InstagramApiPoster(Poster):
@@ -35,6 +35,12 @@ class InstagramApiPoster(Poster):
         self.token = creds.api_token
         self.user_id = (creds.extra or {}).get("user_id")
         self.public_media_base_url = public_media_base_url
+        # Set when connected through the Channels page (Page token + app secret).
+        self.app_secret = (creds.extra or {}).get("app_secret") or ""
+
+    def _auth(self) -> dict:
+        from .facebook import appsecret_proof
+        return {"access_token": self.token, **appsecret_proof(self.token or "", self.app_secret)}
 
     def post(self, post: GeneratedPost) -> PostResult:
         if not (self.token and self.user_id):
@@ -50,7 +56,7 @@ class InstagramApiPoster(Poster):
             )
         try:
             caption = post.for_platform(Platform.instagram)
-            create_payload = {"caption": caption, "access_token": self.token}
+            create_payload = {"caption": caption, **self._auth()}
             if post.media.kind == "video":
                 create_payload.update(
                     {"media_type": "REELS", "video_url": media_url, "share_to_feed": "true"}
@@ -62,6 +68,9 @@ class InstagramApiPoster(Poster):
                 data=create_payload,
                 timeout=60,
             )
+            if 400 <= create.status_code < 500:
+                from .facebook import REJECTED
+                return self._fail(REJECTED + f"Instagram refused the media (HTTP {create.status_code}). Check the image and connection.")
             if create.status_code >= 300:
                 return self._fail(f"IG container failed {create.status_code}: {create.text[:300]}")
             creation_id = create.json()["id"]
@@ -70,12 +79,12 @@ class InstagramApiPoster(Poster):
 
             publish = requests.post(
                 f"{GRAPH}/{self.user_id}/media_publish",
-                data={"creation_id": creation_id, "access_token": self.token},
+                data={"creation_id": creation_id, **self._auth()},
                 timeout=60,
             )
             if publish.status_code >= 300:
                 return self._fail(f"IG publish failed {publish.status_code}: {publish.text[:300]}")
-            return self._ok()
+            return self._ok(self._permalink(publish.json().get("id")))
         except Exception as e:  # noqa: BLE001
             return self._fail(f"Instagram API error: {e}")
 
@@ -84,13 +93,24 @@ class InstagramApiPoster(Poster):
         while time.time() < deadline:
             r = requests.get(
                 f"{GRAPH}/{creation_id}",
-                params={"fields": "status_code", "access_token": self.token},
+                params={"fields": "status_code", **self._auth()},
                 timeout=30,
             )
             if r.ok and r.json().get("status_code") == "FINISHED":
                 return
             time.sleep(3)
         # Images are usually instant; don't hard-fail if status endpoint lags.
+
+    def _permalink(self, media_id) -> Optional[str]:
+        """Best effort: the post is already live, so a lookup failure is not an error."""
+        if not media_id:
+            return None
+        try:
+            r = requests.get(f"{GRAPH}/{media_id}", params={"fields": "permalink", **self._auth()}, timeout=20)
+            link = r.json().get("permalink") if r.ok else None
+        except Exception:  # noqa: BLE001
+            return None
+        return link if isinstance(link, str) and link.startswith("https://www.instagram.com/") else None
 
     def _public_url_for(self, local_path: str) -> Optional[str]:
         if not self.public_media_base_url:

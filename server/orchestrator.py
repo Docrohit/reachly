@@ -80,6 +80,9 @@ def build_agent_for_user(user: User) -> Agent | None:
 
     platforms: dict[Platform, PlatformCredentials] = {}
     for row in cred_rows:
+        if row.platform == "twitter" and row.mode == "api":
+            from .channels import refresh_x_token
+            row = refresh_x_token(row)
         secrets = decrypt_dict(row.vault) if row.vault else {}
         platform = Platform(row.platform)
         platforms[platform] = _creds_from_secrets(
@@ -574,6 +577,20 @@ def _creds_from_secrets(
             username=_provider_value(s, "email", "LINKEDIN_EMAIL", use_env=use_env),
             password=_provider_value(s, "password", "LINKEDIN_PASSWORD", use_env=use_env),
         )
+    if platform == Platform.facebook:
+        # Only the Channels page creates these (Facebook Login, Page token).
+        return PlatformCredentials(
+            platform=platform,
+            mode=mode,
+            api_token=s.get("access_token"),
+            extra={
+                "page_id": s.get("page_id", ""),
+                "page_url": s.get("page_url", ""),
+                "expected_account": s.get("account", ""),
+                "app_secret": get_settings().meta_app_secret if s.get("connected_via") == "oauth" else "",
+                "graph_version": get_settings().meta_graph_version,
+            },
+        )
     if platform == Platform.instagram:
         return PlatformCredentials(
             platform=platform,
@@ -586,7 +603,8 @@ def _creds_from_secrets(
                     "INSTAGRAM_USER_ID",
                     default="",
                     use_env=use_env,
-                )
+                ),
+                "app_secret": get_settings().meta_app_secret if s.get("connected_via") == "oauth" else "",
             },
             username=_provider_value(s, "username", "INSTAGRAM_USERNAME", use_env=use_env),
             password=_provider_value(s, "password", "INSTAGRAM_PASSWORD", use_env=use_env),
@@ -981,6 +999,9 @@ def start_scheduler():
 
     sched = BackgroundScheduler(timezone="UTC")
     sched.add_job(tick, "cron", minute="*", id="reachly_saas_tick", max_instances=1, coalesce=True)
+    if get_settings().autopilot_enabled:
+        from .channels import autopilot_tick
+        sched.add_job(autopilot_tick, "cron", minute="*/10", id="reachly_channels_autopilot", max_instances=1, coalesce=True)
     sched.start()
     logger.info("Orchestrator scheduler started (per-minute tick).")
     return sched

@@ -28,6 +28,16 @@ class ServerSettings:
         self.public_base_url = os.getenv("REACHLY_PUBLIC_BASE_URL", "http://localhost:8000")
         self.knowledge_event_secret = os.getenv("REACHLY_KNOWLEDGE_EVENT_SECRET", "")
 
+        # Personal OAuth apps for the Channels page. Never reuse work (Hygaar)
+        # app IDs or secrets here; these belong to Rohit's personal accounts.
+        self.meta_app_id = os.getenv("REACHLY_META_APP_ID", "")
+        self.meta_app_secret = os.getenv("REACHLY_META_APP_SECRET", "")
+        self.meta_login_config_id = os.getenv("REACHLY_META_LOGIN_CONFIG_ID", "")
+        self.meta_graph_version = os.getenv("REACHLY_META_GRAPH_VERSION", "v25.0")
+        self.x_client_id = os.getenv("REACHLY_X_CLIENT_ID", "")
+        self.x_client_secret = os.getenv("REACHLY_X_CLIENT_SECRET", "")
+        self.autopilot_enabled = os.getenv("REACHLY_AUTOPILOT_ENABLED", "true").lower() in ("1", "true", "yes")
+
         # Disabled compatibility bridge for imported deployments.
         self.legacy_auth_enabled = os.getenv("REACHLY_LEGACY_AUTH_ENABLED", "false").lower() in ("1", "true", "yes")
         self.hygaar_api_base_url = os.getenv(
