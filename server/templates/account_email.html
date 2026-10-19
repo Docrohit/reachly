@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Sign-in email · Reachly{% endblock %}
+{% block content %}
+<div style="max-width:520px;margin:30px auto">
+  <h1 style="font-size:32px">Sign-in email</h1>
+  <p class="muted">Link an email to this account so you can sign in with a code sent to your inbox, as well as with Telegram.</p>
+  {% if done %}<div class="card"><p class="ok"><strong>Saved.</strong> You can now sign in with {{ linked }} at /login.</p></div>{% endif %}
+  {% if error %}<div class="card"><p class="err">{{ error }}</p></div>{% endif %}
+  <div class="card">
+    <p>Current sign-in email: <strong>{{ linked or 'none yet' }}</strong></p>
+    {% if not enabled %}
+      <p class="err">Email is not configured on this server yet (REACHLY_SMTP_* settings).</p>
+    {% elif sent %}
+      <form method="post" action="/account/email/confirm">
+        <input type="hidden" name="email" value="{{ sent }}"/>
+        <label>We sent a 6-digit code to {{ sent }}</label>
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required autofocus/>
+        <button class="btn primary" style="margin-top:12px" type="submit">Confirm email</button>
+        <a class="btn ghost" href="/account/email">Use a different email</a>
+      </form>
+    {% else %}
+      <form method="post" action="/account/email/start">
+        <label>{{ 'Replace with' if linked else 'Email' }}</label>
+        <input name="email" type="email" maxlength="254" autocomplete="email" placeholder="you@example.com" required/>
+        <button class="btn primary" style="margin-top:12px" type="submit">Send confirmation code</button>
+      </form>
+    {% endif %}
+  </div>
+  <a href="/channels">Back to Channels</a>
+</div>
+{% endblock %}

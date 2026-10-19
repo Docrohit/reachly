@@ -46,6 +46,9 @@ NOTICES = {
     "working": "Working on it. Refresh in a minute to see the result.",
     "published": "Publishing finished. See the results under the draft.",
     "discarded": "Draft discarded.", "project": "Project created. Add its AI provider key in Settings if you did not copy one.",
+    "invited": "Invitation sent. The client signs in with that email and a code.",
+    "invite_saved": "Client added, but the invitation email could not be sent. Ask them to sign in at /login with that email.",
+    "client_removed": "Client access removed.", "reviewed": "Thanks. Your review was saved.",
 }
 ERRORS = {
     "cancelled": "The sign-in was cancelled or expired. Try again and finish within 15 minutes.",
@@ -53,6 +56,8 @@ ERRORS = {
     "no_page": "No Facebook Page with posting permission was shared. Reconnect and select the Page.",
     "provider": "The platform did not complete the connection. Try again.",
     "busy": "Publishing is in progress for this account. Try again when it finishes.",
+    "invite_invalid": "Enter a valid client email address.",
+    "invite_used": "That email already has Reachly access. Remove it first or use another email.",
 }
 _x_refresh_lock = threading.Lock()
 
@@ -110,6 +115,22 @@ def _projects(owner: User) -> list[User]:
             (User.id == owner.id) | (User.owner_user_id == owner.id)).order_by(User.id)).all())
 
 
+def _actor(request: Request):
+    """The owner (all projects) or an invited client (one project)."""
+    from .accounts import current_actor
+    return current_actor(request)
+
+
+def _project_for(actor, workspace_id: int) -> User:
+    if workspace_id not in actor.workspace_ids:
+        raise HTTPException(404, "Project not found.")
+    with get_session() as session:
+        workspace = session.get(User, workspace_id)
+    if not workspace:
+        raise HTTPException(404, "Project not found.")
+    return workspace
+
+
 def _same_origin(request: Request) -> None:
     from urllib.parse import urlparse
     origin = request.headers.get("origin")
@@ -117,9 +138,9 @@ def _same_origin(request: Request) -> None:
         raise HTTPException(403, "Use the form on Reachly to perform this action.")
 
 
-def _back(notice: str = "", error: str = "", anchor: int | None = None) -> RedirectResponse:
+def _back(notice: str = "", error: str = "", anchor: int | None = None, home: str = "/channels") -> RedirectResponse:
     query = urlencode({k: v for k, v in (("notice", notice), ("error", error)) if v})
-    return RedirectResponse("/channels" + ("?" + query if query else "") + (f"#p{anchor}" if anchor else ""), status_code=303)
+    return RedirectResponse(home + ("?" + query if query else "") + (f"#p{anchor}" if anchor else ""), status_code=303)
 
 
 def provider_status() -> dict:
@@ -183,38 +204,47 @@ def _bind(workspace_id: int, platform: str, data: dict) -> None:
         session.add(row); session.commit()
 
 
-def _new_state(owner_id: int, workspace_id: int, provider: str, sealed: dict | None = None) -> str:
+def _new_state(actor, workspace_id: int, provider: str, sealed: dict | None = None) -> str:
     state = secrets.token_urlsafe(32)
     with get_session() as session:
-        session.add(ChannelOAuthState(state=state, owner_id=owner_id, workspace_id=workspace_id, provider=provider,
-                                      sealed=encrypt_dict(sealed) if sealed else "",
+        session.add(ChannelOAuthState(state=state, owner_id=actor.owner_id, workspace_id=workspace_id, provider=provider,
+                                      sealed=encrypt_dict({**(sealed or {}), "actor": actor.key}),
                                       expires_at=datetime.utcnow() + STATE_TTL))
         session.commit()
     return state
 
 
-def _pop_state(owner: User, provider: str, state: str) -> tuple[User, dict]:
-    """Single-use state bound to the signed-in owner who started the flow."""
+def _state_owner_matches(actor, row: ChannelOAuthState) -> dict:
+    sealed = decrypt_dict(row.sealed) if row.sealed else {}
+    if row.owner_id != actor.owner_id or sealed.get("actor", f"owner:{row.owner_id}") != actor.key \
+            or row.workspace_id not in actor.workspace_ids or row.expires_at < datetime.utcnow():
+        raise ValueError("cancelled")
+    return sealed
+
+
+def _pop_state(actor, provider: str, state: str) -> tuple[User, dict]:
+    """Single-use state bound to the signed-in person (owner or client) who started the flow."""
     with get_session() as session:
         row = session.get(ChannelOAuthState, str(state or "")[:100])
         if row:
             session.delete(row); session.commit()
-    if not row or row.owner_id != owner.id or row.provider != provider or row.expires_at < datetime.utcnow():
+    if not row or row.provider != provider:
         raise ValueError("cancelled")
-    return _workspace(owner, row.workspace_id), (decrypt_dict(row.sealed) if row.sealed else {})
+    sealed = _state_owner_matches(actor, row)
+    return _project_for(actor, row.workspace_id), sealed
 
 
 @router.get("/channels/{workspace_id}/connect/{provider}")
 def connect(request: Request, workspace_id: int, provider: str):
-    owner = _owner(request)
-    workspace = _workspace(owner, workspace_id)
+    actor = _actor(request)
+    workspace = _project_for(actor, workspace_id)
     if provider not in ("meta", "x"):
         raise HTTPException(404, "Unknown connection.")
     if not provider_status()[provider]:
-        return _back(error="not_configured", anchor=workspace.id)
+        return _back(error="not_configured", anchor=workspace.id, home=actor.home)
     s = get_settings()
     if provider == "meta":
-        state = _new_state(owner.id, workspace.id, "meta")
+        state = _new_state(actor, workspace.id, "meta")
         params = {"client_id": s.meta_app_id, "redirect_uri": _redirect_uri("meta"), "state": state, "response_type": "code"}
         if s.meta_login_config_id:
             params["config_id"] = s.meta_login_config_id
@@ -223,7 +253,7 @@ def connect(request: Request, workspace_id: int, provider: str):
         return RedirectResponse(f"https://www.facebook.com/{s.meta_graph_version}/dialog/oauth?" + urlencode(params), status_code=303)
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
-    state = _new_state(owner.id, workspace.id, "x", {"verifier": verifier})
+    state = _new_state(actor, workspace.id, "x", {"verifier": verifier})
     params = {"response_type": "code", "client_id": s.x_client_id, "redirect_uri": _redirect_uri("x"),
               "scope": X_SCOPES, "state": state, "code_challenge": challenge, "code_challenge_method": "S256"}
     return RedirectResponse("https://x.com/i/oauth2/authorize?" + urlencode(params), status_code=303)
@@ -241,13 +271,14 @@ def _connect_page(workspace_id: int, page: dict) -> None:
 
 @router.get("/channels/oauth/meta/callback")
 def meta_callback(request: Request, state: str = "", code: str = "", error: str = ""):
-    owner = _owner(request)
+    actor = _actor(request)
+    back = lambda **kw: _back(home=actor.home, **kw)  # noqa: E731
     try:
-        workspace, _ = _pop_state(owner, "meta", state)
+        workspace, _ = _pop_state(actor, "meta", state)
     except ValueError:
-        return _back(error="cancelled")
+        return back(error="cancelled")
     if error or not code:
-        return _back(error="cancelled", anchor=workspace.id)
+        return back(error="cancelled", anchor=workspace.id)
     s = get_settings()
     app = {"client_id": s.meta_app_id, "client_secret": s.meta_app_secret}
     try:
@@ -259,47 +290,50 @@ def meta_callback(request: Request, state: str = "", code: str = "", error: str 
             "fields": "id,name,access_token,tasks,instagram_business_account{id,username}", "limit": 100,
             "access_token": long, **appsecret_proof(long, s.meta_app_secret)}).get("data", [])
     except (ValueError, KeyError, TypeError):
-        return _back(error="provider", anchor=workspace.id)
+        return back(error="provider", anchor=workspace.id)
     pages = [p for p in pages if p.get("access_token") and str(p.get("id", "")).isdigit()
              and ("tasks" not in p or "CREATE_CONTENT" in p["tasks"])]
     if not pages:
-        return _back(error="no_page", anchor=workspace.id)
+        return back(error="no_page", anchor=workspace.id)
     if len(pages) == 1:
         try:
             _connect_page(workspace.id, pages[0])
         except ValueError:
-            return _back(error="busy", anchor=workspace.id)
-        return _back(notice="connected", anchor=workspace.id)
-    pick = _new_state(owner.id, workspace.id, "pick", {"pages": pages})
+            return back(error="busy", anchor=workspace.id)
+        return back(notice="connected", anchor=workspace.id)
+    pick = _new_state(actor, workspace.id, "pick", {"pages": pages})
     return RedirectResponse(f"/channels/{workspace.id}/meta/pick?pick={pick}", status_code=303)
 
 
-def _pick_pages(owner: User, workspace: User, pick: str) -> list[dict]:
+def _pick_pages(actor, workspace: User, pick: str) -> list[dict]:
     with get_session() as session:
         row = session.get(ChannelOAuthState, str(pick or "")[:100])
-    if not row or row.owner_id != owner.id or row.workspace_id != workspace.id or row.provider != "pick" \
-            or row.expires_at < datetime.utcnow():
-        raise HTTPException(410, "Page selection expired. Connect Facebook again.")
-    return decrypt_dict(row.sealed).get("pages", [])
+    try:
+        if not row or row.workspace_id != workspace.id or row.provider != "pick":
+            raise ValueError("expired")
+        return _state_owner_matches(actor, row).get("pages", [])
+    except ValueError:
+        raise HTTPException(410, "Page selection expired. Connect Facebook again.") from None
 
 
 @router.get("/channels/{workspace_id}/meta/pick")
 def meta_pick(request: Request, workspace_id: int, pick: str = ""):
     from .app import templates
-    owner = _owner(request)
-    workspace = _workspace(owner, workspace_id)
+    actor = _actor(request)
+    workspace = _project_for(actor, workspace_id)
     pages = [{"id": p["id"], "name": p.get("name", ""), "instagram": (p.get("instagram_business_account") or {}).get("username")}
-             for p in _pick_pages(owner, workspace, pick)]
+             for p in _pick_pages(actor, workspace, pick)]
     return templates.TemplateResponse(request, "channels_pick.html", {
-        "user": workspace, "project": _profile_name(workspace.id), "workspace_id": workspace.id, "pages": pages, "pick": pick})
+        "user": workspace if actor.kind == "owner" else None, "client": actor.email, "home": actor.home,
+        "project": _profile_name(workspace.id), "workspace_id": workspace.id, "pages": pages, "pick": pick})
 
 
 @router.post("/channels/{workspace_id}/meta/pick")
 def meta_pick_save(request: Request, workspace_id: int, pick: str = Form(...), page_id: str = Form(...)):
     _same_origin(request)
-    owner = _owner(request)
-    workspace = _workspace(owner, workspace_id)
-    page = next((p for p in _pick_pages(owner, workspace, pick) if str(p["id"]) == page_id), None)
+    actor = _actor(request)
+    workspace = _project_for(actor, workspace_id)
+    page = next((p for p in _pick_pages(actor, workspace, pick) if str(p["id"]) == page_id), None)
     if not page:
         raise HTTPException(422, "Choose one of the Pages you authorised.")
     with get_session() as session:
@@ -309,19 +343,20 @@ def meta_pick_save(request: Request, workspace_id: int, pick: str = Form(...), p
     try:
         _connect_page(workspace.id, page)
     except ValueError:
-        return _back(error="busy", anchor=workspace.id)
-    return _back(notice="connected", anchor=workspace.id)
+        return _back(error="busy", anchor=workspace.id, home=actor.home)
+    return _back(notice="connected", anchor=workspace.id, home=actor.home)
 
 
 @router.get("/channels/oauth/x/callback")
 def x_callback(request: Request, state: str = "", code: str = "", error: str = ""):
-    owner = _owner(request)
+    actor = _actor(request)
+    back = lambda **kw: _back(home=actor.home, **kw)  # noqa: E731
     try:
-        workspace, sealed = _pop_state(owner, "x", state)
+        workspace, sealed = _pop_state(actor, "x", state)
     except ValueError:
-        return _back(error="cancelled")
+        return back(error="cancelled")
     if error or not code:
-        return _back(error="cancelled", anchor=workspace.id)
+        return back(error="cancelled", anchor=workspace.id)
     s = get_settings()
     try:
         token = _http("POST", f"{X_API}/oauth2/token", auth=(s.x_client_id, s.x_client_secret), data={
@@ -337,10 +372,10 @@ def x_callback(request: Request, state: str = "", code: str = "", error: str = "
             "account": "@" + username, "expected_account": username,
             "verified_user_id": user_id, "verified_username": username})
     except ValueError as exc:
-        return _back(error="busy" if str(exc) == "busy" else "provider", anchor=workspace.id)
+        return back(error="busy" if str(exc) == "busy" else "provider", anchor=workspace.id)
     except (KeyError, TypeError):
-        return _back(error="provider", anchor=workspace.id)
-    return _back(notice="connected", anchor=workspace.id)
+        return back(error="provider", anchor=workspace.id)
+    return back(notice="connected", anchor=workspace.id)
 
 
 def refresh_x_token(row: PlatformCredRow) -> PlatformCredRow:
@@ -382,18 +417,19 @@ def _expiring(data: dict) -> bool:
 @router.post("/channels/{workspace_id}/{platform}/disconnect")
 def disconnect(request: Request, workspace_id: int, platform: str):
     _same_origin(request)
-    workspace = _workspace(_owner(request), workspace_id)
+    actor = _actor(request)
+    workspace = _project_for(actor, workspace_id)
     if platform not in CHANNELS:
         raise HTTPException(404, "Unknown channel.")
     with get_session() as session:
         if session.exec(select(ChannelPublication).where(ChannelPublication.user_id == workspace.id,
                         ChannelPublication.platform == platform, ChannelPublication.state == "sending")).first():
-            return _back(error="busy", anchor=workspace.id)
+            return _back(error="busy", anchor=workspace.id, home=actor.home)
         row = session.exec(select(PlatformCredRow).where(PlatformCredRow.user_id == workspace.id,
                                                          PlatformCredRow.platform == platform)).first()
         if row:
             session.delete(row); session.commit()
-    return _back(notice="disconnected", anchor=workspace.id)
+    return _back(notice="disconnected", anchor=workspace.id, home=actor.home)
 
 
 # ---- drafts, generation and publishing --------------------------------------
@@ -570,6 +606,10 @@ def _queue(workspace_id: int, need_image: bool) -> list:
     since = datetime.utcnow() - DRAFT_MAX_AGE
     with get_session() as session:
         attempted = set(session.exec(select(ChannelPublication.draft_id).where(ChannelPublication.user_id == workspace_id)).all())
+        from .accounts import DraftReview
+        # A client asking for changes holds the draft back from autopilot.
+        attempted |= set(session.exec(select(DraftReview.draft_id).where(
+            DraftReview.user_id == workspace_id, DraftReview.state == "changes")).all())
         drafts = session.exec(select(StudioDraft).where(
             StudioDraft.user_id == workspace_id, StudioDraft.business_key == _key(profile),
             StudioDraft.state == "draft").order_by(StudioDraft.created_at)).all()
@@ -663,6 +703,7 @@ def _background(target, *args, **kwargs) -> None:
 
 # ---- pages -----------------------------------------------------------------
 def _project_view(workspace: User) -> dict:
+    from .accounts import clients_for
     from .studio import StudioDraft, _key
     profile = _profile_row(workspace.id)
     setting = autopilot_setting(workspace.id)
@@ -675,9 +716,12 @@ def _project_view(workspace: User) -> dict:
                 StudioDraft.state != "discarded").order_by(StudioDraft.created_at.desc()).limit(4)).all()
             pubs = session.exec(select(ChannelPublication).where(
                 ChannelPublication.draft_id.in_([d.id for d in rows]))).all() if rows else []
+        from .accounts import reviews_for
+        reviews = reviews_for([r.id for r in rows])
         for row in rows:
             post = GeneratedPost.model_validate_json(row.content)
-            drafts.append({"row": row, "post": post, "pubs": [p for p in pubs if p.draft_id == row.id]})
+            drafts.append({"row": row, "post": post, "pubs": [p for p in pubs if p.draft_id == row.id],
+                           "review": reviews.get(row.id)})
     last = last_published_at(workspace.id)
     now = datetime.utcnow()
     return {
@@ -688,6 +732,7 @@ def _project_view(workspace: User) -> dict:
         "last_published": last, "next_due": (last + timedelta(hours=setting.interval_hours)) if last else None,
         "due_note": due_reason(workspace, setting, now), "drafts": drafts,
         "queue": len(_queue(workspace.id, need_image="instagram" in setting.platforms)),
+        "clients": clients_for(workspace.id),
     }
 
 
