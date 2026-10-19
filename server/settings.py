@@ -38,6 +38,13 @@ class ServerSettings:
         self.x_client_secret = os.getenv("REACHLY_X_CLIENT_SECRET", "")
         self.autopilot_enabled = os.getenv("REACHLY_AUTOPILOT_ENABLED", "true").lower() in ("1", "true", "yes")
 
+        # Email-code sign-in (owner and invited clients). Personal mailbox only.
+        self.smtp_host = os.getenv("REACHLY_SMTP_HOST", "")
+        self.smtp_port = int(os.getenv("REACHLY_SMTP_PORT", "587") or 587)
+        self.smtp_user = os.getenv("REACHLY_SMTP_USER", "")
+        self.smtp_password = os.getenv("REACHLY_SMTP_PASSWORD", "")
+        self.smtp_from = os.getenv("REACHLY_SMTP_FROM", "")
+
         # Disabled compatibility bridge for imported deployments.
         self.legacy_auth_enabled = os.getenv("REACHLY_LEGACY_AUTH_ENABLED", "false").lower() in ("1", "true", "yes")
         self.hygaar_api_base_url = os.getenv(

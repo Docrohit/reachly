@@ -60,3 +60,25 @@ linked to the Page.
 Source and tests only (2026-10-17). Real acceptance needs: personal Meta app created, both apps'
 keys on the server, deployment, connecting Council's Page/Instagram/X, X credits, and one reviewed
 live post per channel with its permalink checked.
+
+## Email-code sign-in and client access (2026-10-19)
+
+- **Owner**: while signed in (Telegram), open **Channels → Sign-in email**, enter an email and confirm
+  the 6-digit code. Afterwards `/login` → "Email me a code" signs in to the same account.
+- **Clients**: on a project card, **Client access → Invite client** stores the email for that one
+  project and emails an invitation. The client signs in at `/login` with that email and lands on
+  `/client`: their project only, where they connect their own Facebook/Instagram/X and approve posts
+  or ask for changes. Drafts with changes requested are held back from autopilot. Owner pages
+  (`/channels`, `/studio`, settings) return 401 for clients. **Remove** revokes access immediately.
+- Codes: six digits, HMAC-hashed, single use, 10 minutes, 5 attempts, 5 codes per email per hour. No
+  passwords are stored. `/auth/email/start` replies the same whether or not the email has access.
+- An email belongs to one sign-in (owner or one client project).
+- Meta app is unpublished: a client can connect Facebook only if their Facebook user has a role on the
+  app (App roles → add as Tester) or if they make the owner's profile a Page admin and the owner
+  connects. Self-serve for anyone needs App Review. X works for any account.
+
+| Variable | Value |
+|---|---|
+| `REACHLY_SMTP_HOST` / `REACHLY_SMTP_PORT` | e.g. `smtp.gmail.com` / `587` (STARTTLS; `465` uses SSL) |
+| `REACHLY_SMTP_USER` / `REACHLY_SMTP_PASSWORD` | Council Gmail address and its app password (copy from Council's env yourself) |
+| `REACHLY_SMTP_FROM` | e.g. `Reachly <councilnetwork.agents@gmail.com>` |

@@ -38,7 +38,7 @@
 
 <div class="ch-head">
   <div><h1>Channels</h1><p class="muted" style="margin:0">Connect each project to its Facebook Page, Instagram and X accounts, publish drafts, and let autopilot post when 24 hours pass without a post.</p></div>
-  <a class="btn" href="/studio">Open Studio</a>
+  <div class="switch-row"><a class="btn" href="/account/email">Sign-in email</a><a class="btn" href="/studio">Open Studio</a></div>
 </div>
 {% if notice %}<div class="notice ok">{{ notice }}</div>{% endif %}
 {% if error %}<div class="notice err">{{ error }}</div>{% endif %}
@@ -90,6 +90,7 @@
             <span class="status {{ d.state }}">{{ d.state.replace('_',' ') }}</span>
             <p><strong>{{ post.hook }}</strong></p>
             <p class="muted small">{{ post.body[:220] }}{% if post.body|length > 220 %}…{% endif %}</p>
+            {% if item.review %}<p class="small"><span class="status {{ 'published' if item.review.state == 'approved' else 'check_platform' }}">{{ 'Client approved' if item.review.state == 'approved' else 'Client asked for changes' }}</span>{% if item.review.note %} <span class="muted">“{{ item.review.note }}”</span>{% endif %}</p>{% endif %}
             {% if item.pubs %}<div class="receipts">{% for pub in item.pubs %}
               {% if pub.permalink %}<a class="status published" href="{{ pub.permalink }}" target="_blank" rel="noopener">View on {{ channels[pub.platform] }}</a>
               {% else %}<span class="status {{ pub.state }}" title="{{ pub.detail }}">{{ channels[pub.platform] }}: {{ pub.state.replace('_',' ') }}</span>{% endif %}
@@ -137,6 +138,20 @@
         </div>
         <p class="small muted">"Publish next post now" uses the oldest waiting draft, or generates one, and publishes to the autopilot channels. A topic always generates a new post. Provider and X charges may apply.</p>
       </form>
+      <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
+        <h3>Client access</h3>
+        <p class="small muted" style="margin-top:0">Invite the client by email. They sign in with a code and see only this project: they can connect their own Facebook, Instagram and X, and approve posts or ask for changes. Drafts with changes requested are held back from autopilot.</p>
+        {% for email in p.clients %}
+        <form method="post" action="/channels/{{ p.id }}/clients/remove" class="switch-row small" style="margin:4px 0">
+          <input type="hidden" name="email" value="{{ email }}"/><span>{{ email }}</span>
+          <button class="btn sm ghost" type="submit">Remove</button>
+        </form>
+        {% endfor %}
+        <form method="post" action="/channels/{{ p.id }}/clients" class="run">
+          <input name="email" type="email" maxlength="254" placeholder="client@example.com" required/>
+          <button class="btn sm" type="submit">Invite client</button>
+        </form>
+      </div>
       {% if not p.has_profile %}<p class="small err">Add this project's business profile and AI provider key in <a href="/dashboard">Settings</a> before generating.</p>{% endif %}
     </div>
   </div>

@@ -75,6 +75,8 @@ from .image_post_api import router as image_post_router
 app.include_router(image_post_router)
 from .channels import router as channels_router
 app.include_router(channels_router)
+from .accounts import email_enabled, router as accounts_router
+app.include_router(accounts_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
 media_path = Path(settings.media_dir)
@@ -206,6 +208,8 @@ def login_page(request: Request):
             "bot": settings.telegram_bot_username,
             "error": None,
             "telegram_enabled": settings.telegram_login_enabled,
+            "email_enabled": email_enabled(),
+            "email": request.query_params.get("email", "")[:254],
         },
     )
 
@@ -224,6 +228,7 @@ def hygaar_login(request: Request, email: str = Form(...), password: str = Form(
                 "bot": settings.telegram_bot_username,
                 "error": str(exc),
                 "telegram_enabled": settings.telegram_login_enabled,
+                "email_enabled": email_enabled(),
                 "email": email,
             },
             status_code=401,
@@ -255,6 +260,7 @@ def verify(request: Request, handle: str = Form(...), code: str = Form(...)):
                 "bot": settings.telegram_bot_username,
                 "error": "Telegram login is disabled.",
                 "telegram_enabled": False,
+                "email_enabled": email_enabled(),
             },
             status_code=400,
         )
@@ -267,6 +273,7 @@ def verify(request: Request, handle: str = Form(...), code: str = Form(...)):
                 "bot": settings.telegram_bot_username,
                 "error": "Invalid or expired code.",
                 "telegram_enabled": settings.telegram_login_enabled,
+                "email_enabled": email_enabled(),
             },
             status_code=401,
         )

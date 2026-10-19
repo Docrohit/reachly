@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} · Reachly{% endblock %}
+{% block content %}
+<style>
+  .notice{padding:12px 16px;border-radius:10px;margin:12px 0;font-weight:600}
+  .notice.ok{background:#ecfdf3;color:var(--ok)} .notice.err{background:#fef3f2;color:var(--err)}
+  .tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  .tile{border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--panel2)}
+  .tile .badge{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:800}
+  .b-facebook{background:#1877f2} .b-instagram{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af)} .b-twitter{background:#0f1419}
+  .tile form{margin:0} .small{font-size:13px} .btn.sm{padding:6px 12px;font-size:13px}
+  .switch-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .status{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(151,163,182,.15);color:var(--muted)}
+  .status.published{background:#ecfdf3;color:var(--ok)} .status.failed{background:#fef3f2;color:var(--err)} .status.check_platform{background:#fffaeb;color:#b54708}
+  .post{display:grid;gap:14px}
+  @media(min-width:720px){.post{grid-template-columns:220px 1fr}}
+  .post img{width:100%;max-width:220px;aspect-ratio:1;object-fit:cover;border-radius:12px;background:var(--panel2)}
+</style>
+<h1 style="font-size:32px;margin-bottom:0">{{ p.name }}</h1>
+<p class="muted" style="margin-top:4px">{{ p.website or '' }}</p>
+{% if notice %}<div class="notice ok">{{ notice }}</div>{% endif %}
+{% if error %}<div class="notice err">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <h2>Your social accounts</h2>
+  <p class="muted small" style="margin-top:0">Connect the accounts we should post to. You approve access on Facebook or X; Reachly never sees your passwords, and you can disconnect at any time.</p>
+  <div class="tiles">
+    {% for key, label in channels.items() %}{% set c = p.connections.get(key) %}
+    <div class="tile">
+      <div class="badge b-{{ key }}">{{ {'facebook':'f','instagram':'◎','twitter':'𝕏'}[key] }}</div>
+      <div class="small muted">{{ label }}</div>
+      {% if c %}
+        <strong>{{ c.account }}</strong>
+        <span class="status {{ 'failed' if c.status == 'reconnect' else 'published' }}">{{ 'Reconnect needed' if c.status == 'reconnect' else 'Connected' }}</span>
+        <div class="switch-row">
+          <a class="btn sm" href="/channels/{{ p.id }}/connect/{{ 'x' if key == 'twitter' else 'meta' }}">Reconnect</a>
+          <form method="post" action="/channels/{{ p.id }}/{{ key }}/disconnect"><button class="btn sm ghost" type="submit">Disconnect</button></form>
+        </div>
+      {% elif key == 'instagram' %}
+        <span class="small muted">Connects with your Facebook Page when an Instagram professional account is linked to it.</span>
+        <a class="btn sm" href="/channels/{{ p.id }}/connect/meta">Connect via Facebook</a>
+      {% else %}
+        <span class="small muted">Not connected</span>
+        <a class="btn sm primary" href="/channels/{{ p.id }}/connect/{{ 'x' if key == 'twitter' else 'meta' }}">Connect {{ 'X' if key == 'twitter' else 'Facebook' }}</a>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<h2>Posts</h2>
+{% for item in p.drafts %}{% set d = item.row %}{% set post = item.post %}
+<div class="card post">
+  {% if post.media %}<img src="/client/drafts/{{ d.id }}/media" alt="Post image" loading="lazy"/>{% else %}<div></div>{% endif %}
+  <div>
+    <span class="status {{ d.state }}">{{ {'draft':'Waiting for review','publishing':'Publishing','published':'Published','check_platform':'Check platform','failed':'Not published'}.get(d.state, d.state) }}</span>
+    <h3 style="margin:8px 0 4px">{{ post.hook }}</h3>
+    <p style="white-space:pre-wrap;margin:0">{{ post.body }}</p>
+    {% if post.hashtags %}<p class="muted small">{{ post.hashtags | join(' ') }}</p>{% endif %}
+    {% for pub in item.pubs if pub.permalink %}<a class="status published" href="{{ pub.permalink }}" target="_blank" rel="noopener">View on {{ channels[pub.platform] }}</a> {% endfor %}
+    {% if item.review %}<p class="small"><span class="status {{ 'published' if item.review.state == 'approved' else 'check_platform' }}">{{ 'You approved this' if item.review.state == 'approved' else 'You asked for changes' }}</span>{% if item.review.note %} <span class="muted">“{{ item.review.note }}”</span>{% endif %}</p>{% endif %}
+    {% if d.state == 'draft' %}
+    <form method="post" action="/client/drafts/{{ d.id }}/review" style="margin-top:10px">
+      <label>Note (optional)</label>
+      <textarea name="note" maxlength="2000" rows="2" placeholder="What should change?"></textarea>
+      <div class="switch-row" style="margin-top:8px">
+        <button class="btn sm primary" type="submit" name="decision" value="approved">Approve</button>
+        <button class="btn sm" type="submit" name="decision" value="changes">Ask for changes</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% else %}<div class="card"><p class="muted">No posts to review yet. You'll see them here when they're ready.</p></div>{% endfor %}
+{% endblock %}

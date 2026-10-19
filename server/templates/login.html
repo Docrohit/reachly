@@ -8,10 +8,35 @@
         <strong style="font-size:22px;color:var(--brand)">R</strong>
       </div>
       <h1 style="font-size:28px;margin:0">Welcome back</h1>
-      <p class="muted" style="margin-top:6px">Sign in to your Reachly workspace with a Telegram code.</p>
+      <p class="muted" style="margin-top:6px">Sign in with a code sent to your email{% if telegram_enabled %} or Telegram{% endif %}. No password needed.</p>
     </div>
 
     {% if error %}<p class="err">{{ error }}</p>{% endif %}
+
+    {% if email_enabled %}
+    <div>
+      <h2 style="font-size:16px">Email sign-in</h2>
+      {% if email_sent %}
+      <p class="muted">If {{ email }} can sign in, a 6-digit code is on its way. It expires in 10 minutes.</p>
+      <form method="post" action="/auth/email/verify">
+        <input type="hidden" name="email" value="{{ email }}"/>
+        <label>Enter the 6-digit code</label>
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required autofocus/>
+        <button class="btn primary" style="margin-top:12px;width:100%" type="submit">Sign in</button>
+      </form>
+      <form method="post" action="/auth/email/start" style="margin-top:8px">
+        <input type="hidden" name="email" value="{{ email }}"/>
+        <button class="btn ghost" style="width:100%" type="submit">Send a new code</button>
+      </form>
+      {% else %}
+      <form method="post" action="/auth/email/start">
+        <label>Your email</label>
+        <input name="email" type="email" autocomplete="email" maxlength="254" value="{{ email or '' }}" placeholder="you@example.com" required/>
+        <button class="btn primary" style="margin-top:12px;width:100%" type="submit">Email me a code</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
 
     {% if telegram_enabled %}
     <div style="border-top:1px solid var(--border);margin-top:24px;padding-top:18px">
